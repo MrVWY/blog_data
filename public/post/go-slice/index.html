@@ -1,0 +1,279 @@
+<!doctype html><html lang=zh-cn dir=zh><head><meta charset=utf-8><meta http-equiv=x-ua-compatible content="IE=edge,chrome=1"><meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1"><meta http-equiv=content-security-policy content="upgrade-insecure-requests"><title>go slice - Canon Blog</title><meta name=keywords content="博客,程序员,读书,笔记,技术,分享"><meta name=author content="Canon"><meta property="og:title" content="go slice"><meta property="og:site_name" content="Canon Blog"><meta property="og:image" content="/img/author.jpg"><meta name=title content="go slice - Canon Blog"><meta name=description content="欢迎来到Canon的博客"><link rel="shortcut icon" href=/img/favicon.ico><link href=//unpkg.com/font-awesome@4.7.0/css/font-awesome.min.css rel=stylesheet type=text/css><link href=//unpkg.com/imageviewer@1.1.0/dist/viewer.min.css rel=stylesheet><link href=/css/main.css rel=stylesheet type=text/css><link href=/css/syntax.css rel=stylesheet type=text/css></head><body itemscope itemtype=http://schema.org/WebPage lang=zh-Hans><div class="container one-collumn sidebar-position-left page-home"><div class=headband></div><header id=header class=header itemscope itemtype=http://schema.org/WPHeader><div class=header-inner><div class=site-brand-container><div class=site-nav-toggle><div class=toggle role=button style=opacity:1;top:0><span class=toggle-line></span>
+<span class=toggle-line></span>
+<span class=toggle-line></span></div></div><div class=site-meta><div class=custom-logo-site-title><a href=/ class=brand rel=start><span class=logo-line-before><i></i></span>
+<span class=site-title>Canon Blog</span>
+<span class=logo-line-after><i></i></span></a></div><p class=site-subtitle>记录学习资料!</p></div><div class=site-nav-right><div class="toggle popup-trigger" style=opacity:1;top:0><i class="fa fa-search fa-fw fa-lg"></i></div></div></div><nav class=site-nav><ul id=menu class=menu><li class=menu-item><a href=/ rel=section><i class="menu-item-icon fa fa-fw fa-home"></i><br>首页</a></li><li class="menu-item menu-item-active"><a href=/post rel=section><i class="menu-item-icon fa fa-fw fa-archive"></i><br>归档</a></li><li class="menu-item menu-item-search"><a href=javascript:; class=popup-trigger><i class="menu-item-icon fa fa-search fa-fw"></i><br>搜索</a></li></ul><div class=site-search><div class="popup search-popup local-search-popup"><div class="local-search-header clearfix"><span class=search-icon><i class="fa fa-search"></i></span>
+<span class=popup-btn-close><i class="fa fa-times-circle"></i></span><div class=local-search-input-wrapper><input autocomplete=off placeholder=搜索关键字... spellcheck=false type=text id=local-search-input autocapitalize=none autocorrect=off></div></div><div id=local-search-result></div></div></div></nav></div></header><main id=main class=main><div class=main-inner><div class=content-wrap><div id=content class=content><section id=posts class=posts-expand><article class="post post-type-normal" itemscope itemtype=http://schema.org/Article><header class=post-header><h1 class=post-title itemprop="name headline" style=font-weight:700><a class=post-title-link href=/post/go-slice/ itemprop=url>go slice</a></h1></header><div class=post-body itemprop=articleBody><h3 id=1切片结构>1、切片结构</h3><p>一个切片由3部分组成：<strong>指针</strong>、<strong>长度</strong>和<strong>容量</strong>。指针指向底层数组，长度代表slice当前的长度，容量代表底层数组的长度，同时切片的长度可以在运行时修改，最小为 0 最大为相关数组的长度：切片是一个长度可变的数组。</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#a2f;font-weight:700>type</span> slice <span style=color:#a2f;font-weight:700>struct</span> {
+</span></span><span style=display:flex><span>   array unsafe.Pointer
+</span></span><span style=display:flex><span>   len   <span style=color:#0b0;font-weight:700>int</span>
+</span></span><span style=display:flex><span>   cap   <span style=color:#0b0;font-weight:700>int</span>
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>s = [<span style=color:#666>2</span>]<span style=color:#0b0;font-weight:700>int</span>{<span style=color:#666>1</span>, <span style=color:#666>2</span>} <span style=color:#080;font-style:italic>//数组
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>s = []<span style=color:#0b0;font-weight:700>int</span>{<span style=color:#666>1</span>, <span style=color:#666>2</span>} <span style=color:#080;font-style:italic>//切片
+</span></span></span></code></pre></div><h3 id=2nil和空切片>2、nil和空切片</h3><p>nil 切片：描述一个不存在的切片（无指针地址）</p><p>空切片：一个空的集合</p><p>区别：空切片指向的地址不是nil，指向的是一个内存地址，但是它没有分配任何内存空间，即底层元素包含0个元素</p><h3 id=3切片扩容>3、切片扩容</h3><p>扩容代码</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>growslice</span>(et <span style=color:#666>*</span>_type, old slice, cap <span style=color:#0b0;font-weight:700>int</span>) slice {
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> raceenabled {
+</span></span><span style=display:flex><span>      callerpc <span style=color:#666>:=</span> <span style=color:#00a000>getcallerpc</span>()
+</span></span><span style=display:flex><span>      <span style=color:#00a000>racereadrangepc</span>(old.array, <span style=color:#a2f>uintptr</span>(old.len<span style=color:#666>*</span><span style=color:#a2f>int</span>(et.size)), callerpc, <span style=color:#00a000>funcPC</span>(growslice))
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> msanenabled {
+</span></span><span style=display:flex><span>      <span style=color:#00a000>msanread</span>(old.array, <span style=color:#a2f>uintptr</span>(old.len<span style=color:#666>*</span><span style=color:#a2f>int</span>(et.size)))
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> cap &lt; old.cap {
+</span></span><span style=display:flex><span>      <span style=color:#a2f>panic</span>(<span style=color:#00a000>errorString</span>(<span style=color:#b44>&#34;growslice: cap out of range&#34;</span>))
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> et.size <span style=color:#666>==</span> <span style=color:#666>0</span> {
+</span></span><span style=display:flex><span>      <span style=color:#080;font-style:italic>// append should not create a slice with nil pointer but non-zero len.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>      <span style=color:#080;font-style:italic>// We assume that append doesn&#39;t need to preserve old.array in this case.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>      <span style=color:#a2f;font-weight:700>return</span> slice{unsafe.<span style=color:#00a000>Pointer</span>(<span style=color:#666>&amp;</span>zerobase), old.len, cap}
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   
+</span></span><span style=display:flex><span>   <span style=color:#080;font-style:italic>//扩容
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   newcap <span style=color:#666>:=</span> old.cap
+</span></span><span style=display:flex><span>   doublecap <span style=color:#666>:=</span> newcap <span style=color:#666>+</span> newcap
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> cap &gt; doublecap {
+</span></span><span style=display:flex><span>      newcap = cap
+</span></span><span style=display:flex><span>   } <span style=color:#a2f;font-weight:700>else</span> {
+</span></span><span style=display:flex><span>      <span style=color:#a2f;font-weight:700>if</span> old.cap &lt; <span style=color:#666>1024</span> {
+</span></span><span style=display:flex><span>         newcap = doublecap
+</span></span><span style=display:flex><span>      } <span style=color:#a2f;font-weight:700>else</span> {
+</span></span><span style=display:flex><span>         <span style=color:#080;font-style:italic>// Check 0 &lt; newcap to detect overflow
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>         <span style=color:#080;font-style:italic>// and prevent an infinite loop.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>         <span style=color:#a2f;font-weight:700>for</span> <span style=color:#666>0</span> &lt; newcap <span style=color:#666>&amp;&amp;</span> newcap &lt; cap {
+</span></span><span style=display:flex><span>            newcap <span style=color:#666>+=</span> newcap <span style=color:#666>/</span> <span style=color:#666>4</span>
+</span></span><span style=display:flex><span>         }
+</span></span><span style=display:flex><span>         <span style=color:#080;font-style:italic>// Set newcap to the requested cap when
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>         <span style=color:#080;font-style:italic>// the newcap calculation overflowed.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>         <span style=color:#a2f;font-weight:700>if</span> newcap <span style=color:#666>&lt;=</span> <span style=color:#666>0</span> {
+</span></span><span style=display:flex><span>            newcap = cap
+</span></span><span style=display:flex><span>         }
+</span></span><span style=display:flex><span>      }
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// 计算新的切片的容量、长度
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   <span style=color:#a2f;font-weight:700>var</span> overflow <span style=color:#0b0;font-weight:700>bool</span>
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>var</span> lenmem, newlenmem, capmem <span style=color:#0b0;font-weight:700>uintptr</span>
+</span></span><span style=display:flex><span>   <span style=color:#080;font-style:italic>// Specialize for common values of et.size.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   <span style=color:#080;font-style:italic>// For 1 we don&#39;t need any division/multiplication.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   <span style=color:#080;font-style:italic>// For sys.PtrSize, compiler will optimize division/multiplication into a shift by a constant.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   <span style=color:#080;font-style:italic>// For powers of 2, use a variable shift.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   <span style=color:#a2f;font-weight:700>switch</span> {
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>case</span> et.size <span style=color:#666>==</span> <span style=color:#666>1</span>:
+</span></span><span style=display:flex><span>      lenmem = <span style=color:#a2f>uintptr</span>(old.len)
+</span></span><span style=display:flex><span>      newlenmem = <span style=color:#a2f>uintptr</span>(cap)
+</span></span><span style=display:flex><span>      capmem = <span style=color:#00a000>roundupsize</span>(<span style=color:#a2f>uintptr</span>(newcap))
+</span></span><span style=display:flex><span>      overflow = <span style=color:#a2f>uintptr</span>(newcap) &gt; maxAlloc
+</span></span><span style=display:flex><span>      newcap = <span style=color:#a2f>int</span>(capmem)
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>case</span> et.size <span style=color:#666>==</span> sys.PtrSize:
+</span></span><span style=display:flex><span>      lenmem = <span style=color:#a2f>uintptr</span>(old.len) <span style=color:#666>*</span> sys.PtrSize
+</span></span><span style=display:flex><span>      newlenmem = <span style=color:#a2f>uintptr</span>(cap) <span style=color:#666>*</span> sys.PtrSize
+</span></span><span style=display:flex><span>      capmem = <span style=color:#00a000>roundupsize</span>(<span style=color:#a2f>uintptr</span>(newcap) <span style=color:#666>*</span> sys.PtrSize)
+</span></span><span style=display:flex><span>      overflow = <span style=color:#a2f>uintptr</span>(newcap) &gt; maxAlloc<span style=color:#666>/</span>sys.PtrSize
+</span></span><span style=display:flex><span>      newcap = <span style=color:#a2f>int</span>(capmem <span style=color:#666>/</span> sys.PtrSize)
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>case</span> <span style=color:#00a000>isPowerOfTwo</span>(et.size):
+</span></span><span style=display:flex><span>      <span style=color:#a2f;font-weight:700>var</span> shift <span style=color:#0b0;font-weight:700>uintptr</span>
+</span></span><span style=display:flex><span>      <span style=color:#a2f;font-weight:700>if</span> sys.PtrSize <span style=color:#666>==</span> <span style=color:#666>8</span> {
+</span></span><span style=display:flex><span>         <span style=color:#080;font-style:italic>// Mask shift for better code generation.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>         shift = <span style=color:#a2f>uintptr</span>(sys.<span style=color:#00a000>Ctz64</span>(<span style=color:#a2f>uint64</span>(et.size))) <span style=color:#666>&amp;</span> <span style=color:#666>63</span>
+</span></span><span style=display:flex><span>      } <span style=color:#a2f;font-weight:700>else</span> {
+</span></span><span style=display:flex><span>         shift = <span style=color:#a2f>uintptr</span>(sys.<span style=color:#00a000>Ctz32</span>(<span style=color:#a2f>uint32</span>(et.size))) <span style=color:#666>&amp;</span> <span style=color:#666>31</span>
+</span></span><span style=display:flex><span>      }
+</span></span><span style=display:flex><span>      lenmem = <span style=color:#a2f>uintptr</span>(old.len) <span style=color:#666>&lt;&lt;</span> shift
+</span></span><span style=display:flex><span>      newlenmem = <span style=color:#a2f>uintptr</span>(cap) <span style=color:#666>&lt;&lt;</span> shift
+</span></span><span style=display:flex><span>      capmem = <span style=color:#00a000>roundupsize</span>(<span style=color:#a2f>uintptr</span>(newcap) <span style=color:#666>&lt;&lt;</span> shift)
+</span></span><span style=display:flex><span>      overflow = <span style=color:#a2f>uintptr</span>(newcap) &gt; (maxAlloc <span style=color:#666>&gt;&gt;</span> shift)
+</span></span><span style=display:flex><span>      newcap = <span style=color:#a2f>int</span>(capmem <span style=color:#666>&gt;&gt;</span> shift)
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>default</span>:
+</span></span><span style=display:flex><span>      lenmem = <span style=color:#a2f>uintptr</span>(old.len) <span style=color:#666>*</span> et.size
+</span></span><span style=display:flex><span>      newlenmem = <span style=color:#a2f>uintptr</span>(cap) <span style=color:#666>*</span> et.size
+</span></span><span style=display:flex><span>      capmem, overflow = math.<span style=color:#00a000>MulUintptr</span>(et.size, <span style=color:#a2f>uintptr</span>(newcap))
+</span></span><span style=display:flex><span>      capmem = <span style=color:#00a000>roundupsize</span>(capmem)
+</span></span><span style=display:flex><span>      newcap = <span style=color:#a2f>int</span>(capmem <span style=color:#666>/</span> et.size)
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> overflow <span style=color:#666>||</span> capmem &gt; maxAlloc {
+</span></span><span style=display:flex><span>      <span style=color:#a2f>panic</span>(<span style=color:#00a000>errorString</span>(<span style=color:#b44>&#34;growslice: cap out of range&#34;</span>))
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>   
+</span></span><span style=display:flex><span>   <span style=color:#080;font-style:italic>//确定 array unsafe.Pointer 地址
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   <span style=color:#a2f;font-weight:700>var</span> p unsafe.Pointer
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> et.ptrdata <span style=color:#666>==</span> <span style=color:#666>0</span> {
+</span></span><span style=display:flex><span>      p = <span style=color:#00a000>mallocgc</span>(capmem, <span style=color:#a2f;font-weight:700>nil</span>, <span style=color:#a2f;font-weight:700>false</span>)
+</span></span><span style=display:flex><span>      <span style=color:#080;font-style:italic>// The append() that calls growslice is going to overwrite from old.len to cap (which will be the new length).
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>      <span style=color:#080;font-style:italic>// Only clear the part that will not be overwritten.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>      <span style=color:#00a000>memclrNoHeapPointers</span>(<span style=color:#00a000>add</span>(p, newlenmem), capmem<span style=color:#666>-</span>newlenmem)
+</span></span><span style=display:flex><span>   } <span style=color:#a2f;font-weight:700>else</span> {
+</span></span><span style=display:flex><span>      <span style=color:#080;font-style:italic>// Note: can&#39;t use rawmem (which avoids zeroing of memory), because then GC can scan uninitialized memory.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>      p = <span style=color:#00a000>mallocgc</span>(capmem, et, <span style=color:#a2f;font-weight:700>true</span>)
+</span></span><span style=display:flex><span>      <span style=color:#a2f;font-weight:700>if</span> lenmem &gt; <span style=color:#666>0</span> <span style=color:#666>&amp;&amp;</span> writeBarrier.enabled {
+</span></span><span style=display:flex><span>         <span style=color:#080;font-style:italic>// Only shade the pointers in old.array since we know the destination slice p
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>         <span style=color:#080;font-style:italic>// only contains nil pointers because it has been cleared during alloc.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>         <span style=color:#00a000>bulkBarrierPreWriteSrcOnly</span>(<span style=color:#a2f>uintptr</span>(p), <span style=color:#a2f>uintptr</span>(old.array), lenmem<span style=color:#666>-</span>et.size<span style=color:#666>+</span>et.ptrdata)
+</span></span><span style=display:flex><span>      }
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>    
+</span></span><span style=display:flex><span>   <span style=color:#080;font-style:italic>//迁移数据
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   <span style=color:#00a000>memmove</span>(p, old.array, lenmem)
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>return</span> slice{p, old.len, newcap}
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><h4 id=切片扩容的策略>切片扩容的策略：</h4><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span>newcap <span style=color:#666>:=</span> old.cap
+</span></span><span style=display:flex><span>doublecap <span style=color:#666>:=</span> newcap <span style=color:#666>+</span> newcap <span style=color:#080;font-style:italic>//2倍
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>if</span> cap &gt; doublecap {
+</span></span><span style=display:flex><span>   newcap = cap
+</span></span><span style=display:flex><span>} <span style=color:#a2f;font-weight:700>else</span> {
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> old.cap &lt; <span style=color:#666>1024</span> {
+</span></span><span style=display:flex><span>      newcap = doublecap
+</span></span><span style=display:flex><span>   } <span style=color:#a2f;font-weight:700>else</span> {
+</span></span><span style=display:flex><span>      <span style=color:#080;font-style:italic>// Check 0 &lt; newcap to detect overflow
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>      <span style=color:#080;font-style:italic>// and prevent an infinite loop.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>      <span style=color:#a2f;font-weight:700>for</span> <span style=color:#666>0</span> &lt; newcap <span style=color:#666>&amp;&amp;</span> newcap &lt; cap {
+</span></span><span style=display:flex><span>         <span style=color:#080;font-style:italic>// 1/4
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>         newcap <span style=color:#666>+=</span> newcap <span style=color:#666>/</span> <span style=color:#666>4</span>
+</span></span><span style=display:flex><span>      }
+</span></span><span style=display:flex><span>      <span style=color:#080;font-style:italic>// Set newcap to the requested cap when
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>      <span style=color:#080;font-style:italic>// the newcap calculation overflowed.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>      <span style=color:#a2f;font-weight:700>if</span> newcap <span style=color:#666>&lt;=</span> <span style=color:#666>0</span> {
+</span></span><span style=display:flex><span>         newcap = cap
+</span></span><span style=display:flex><span>      }
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><ul><li>首先判断，如果新申请容量（cap）大于2倍的旧容量（old.cap），最终容量（newcap）就是新申请的容量（cap）</li><li>否则判断，如果旧切片的长度小于1024，则最终容量(newcap)就是旧容量(old.cap)的两倍，即（newcap=doublecap）</li><li>否则判断，如果旧切片长度大于等于1024，则最终容量（newcap）从旧容量（old.cap）开始循环增加原来的 1/4，直到最终容量（newcap）大于等于新申请的容量(cap)，即（newcap >= cap）</li><li>如果最终容量（cap）计算值溢出，则最终容量（cap）就是新申请容量（cap）</li></ul><h3 id=4切片扩容的两种情况>4、切片扩容的两种情况</h3><h4 id=情况一>情况一</h4><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>main</span>() {
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>   array <span style=color:#666>:=</span> [<span style=color:#666>5</span>]<span style=color:#0b0;font-weight:700>int</span>{<span style=color:#666>1</span>, <span style=color:#666>2</span>, <span style=color:#666>3</span>, <span style=color:#666>4</span>, <span style=color:#666>5</span>} <span style=color:#080;font-style:italic>//数组
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   slice <span style=color:#666>:=</span> array[<span style=color:#666>0</span>:<span style=color:#666>2</span>]            <span style=color:#080;font-style:italic>//切片  len=2 cap=5 array = &amp;array
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   newSlice <span style=color:#666>:=</span> <span style=color:#a2f>append</span>(slice, <span style=color:#666>100</span>)
+</span></span><span style=display:flex><span>   fmt.<span style=color:#00a000>Printf</span>(<span style=color:#b44>&#34;Before slice = %v, Pointer = %p, len = %d, cap = %d\n&#34;</span>, slice, <span style=color:#666>&amp;</span>slice, <span style=color:#a2f>len</span>(slice), <span style=color:#a2f>cap</span>(slice))
+</span></span><span style=display:flex><span>   fmt.<span style=color:#00a000>Printf</span>(<span style=color:#b44>&#34;Before newSlice = %v, Pointer = %p, len = %d, cap = %d\n&#34;</span>, newSlice, <span style=color:#666>&amp;</span>newSlice, <span style=color:#a2f>len</span>(newSlice), <span style=color:#a2f>cap</span>(newSlice))
+</span></span><span style=display:flex><span>   newSlice[<span style=color:#666>1</span>] <span style=color:#666>+=</span> <span style=color:#666>10</span>
+</span></span><span style=display:flex><span>   fmt.<span style=color:#00a000>Printf</span>(<span style=color:#b44>&#34;After slice = %v, Pointer = %p, len = %d, cap = %d\n&#34;</span>, slice, <span style=color:#666>&amp;</span>slice, <span style=color:#a2f>len</span>(slice), <span style=color:#a2f>cap</span>(slice))
+</span></span><span style=display:flex><span>   fmt.<span style=color:#00a000>Printf</span>(<span style=color:#b44>&#34;After newSlice = %v, Pointer = %p, len = %d, cap = %d\n&#34;</span>, newSlice, <span style=color:#666>&amp;</span>newSlice, <span style=color:#a2f>len</span>(newSlice), <span style=color:#a2f>cap</span>(newSlice))
+</span></span><span style=display:flex><span>   fmt.<span style=color:#00a000>Printf</span>(<span style=color:#b44>&#34;After array = %v\n&#34;</span>, array)
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#080;font-style:italic>//打印输出
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>Before slice = [<span style=color:#666>1</span> <span style=color:#666>2</span>], Pointer = <span style=color:#666>0xc000004078</span>, len = <span style=color:#666>2</span>, cap = <span style=color:#666>5</span>
+</span></span><span style=display:flex><span>Before newSlice = [<span style=color:#666>1</span> <span style=color:#666>2</span> <span style=color:#666>100</span>], Pointer = <span style=color:#666>0xc000004090</span>, len = <span style=color:#666>3</span>, cap = <span style=color:#666>5</span>
+</span></span><span style=display:flex><span>After slice = [<span style=color:#666>1</span> <span style=color:#666>12</span>], Pointer = <span style=color:#666>0xc000004078</span>, len = <span style=color:#666>2</span>, cap = <span style=color:#666>5</span>       
+</span></span><span style=display:flex><span>After newSlice = [<span style=color:#666>1</span> <span style=color:#666>12</span> <span style=color:#666>100</span>], Pointer = <span style=color:#666>0xc000004090</span>, len = <span style=color:#666>3</span>, cap = <span style=color:#666>5</span>
+</span></span><span style=display:flex><span>After array = [<span style=color:#666>1</span> <span style=color:#666>12</span> <span style=color:#666>100</span> <span style=color:#666>4</span> <span style=color:#666>5</span>]
+</span></span></code></pre></div><p>结合切片的结构可以看出，由于原数组还有容量cap可以使用，所以执行 append() 操作以后，会在原数组上直接操作，所以这种情况下，扩容以后的数组还是指向原来的数组。</p><p>因此多个slice指向相同的底层数组时，修改其中一个slice，可能会影响其他slice的值。</p><h4 id=情况二>情况二</h4><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#a2f;font-weight:700>var</span> p unsafe.Pointer
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>if</span> et.ptrdata <span style=color:#666>==</span> <span style=color:#666>0</span> {
+</span></span><span style=display:flex><span>   p = <span style=color:#00a000>mallocgc</span>(capmem, <span style=color:#a2f;font-weight:700>nil</span>, <span style=color:#a2f;font-weight:700>false</span>)
+</span></span><span style=display:flex><span>   <span style=color:#080;font-style:italic>// The append() that calls growslice is going to overwrite from old.len to cap (which will be the new length).
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   <span style=color:#080;font-style:italic>// Only clear the part that will not be overwritten.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   <span style=color:#00a000>memclrNoHeapPointers</span>(<span style=color:#00a000>add</span>(p, newlenmem), capmem<span style=color:#666>-</span>newlenmem)
+</span></span><span style=display:flex><span>} <span style=color:#a2f;font-weight:700>else</span> {
+</span></span><span style=display:flex><span>   <span style=color:#080;font-style:italic>// Note: can&#39;t use rawmem (which avoids zeroing of memory), because then GC can scan uninitialized memory.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   <span style=color:#080;font-style:italic>//重新申请capmem大小的内存地址，并初始化为zero
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   p = <span style=color:#00a000>mallocgc</span>(capmem, et, <span style=color:#a2f;font-weight:700>true</span>)
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> lenmem &gt; <span style=color:#666>0</span> <span style=color:#666>&amp;&amp;</span> writeBarrier.enabled {
+</span></span><span style=display:flex><span>      <span style=color:#080;font-style:italic>// Only shade the pointers in old.array since we know the destination slice p
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>      <span style=color:#080;font-style:italic>// only contains nil pointers because it has been cleared during alloc.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>      <span style=color:#080;font-style:italic>//执行写屏障，将p给打上颜色
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>      <span style=color:#00a000>bulkBarrierPreWriteSrcOnly</span>(<span style=color:#a2f>uintptr</span>(p), <span style=color:#a2f>uintptr</span>(old.array), lenmem<span style=color:#666>-</span>et.size<span style=color:#666>+</span>et.ptrdata)
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span><span style=color:#080;font-style:italic>//迁移数据
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#00a000>memmove</span>(p, old.array, lenmem)
+</span></span></code></pre></div><p>数组的容量已经达到了最大值，Go 默认会先开一片新的内存区域，把原来的值拷贝过来，然后再执行 append() 操作。这时候新旧切片所指向的数组的内存地址不一样，因此在新切片上操作不会对旧切片造成影响。</p><h3 id=5切片copy>5、切片copy</h3><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#080;font-style:italic>// slicecopy is used to copy from a string or slice of pointerless elements into a slice.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>slicecopy</span>(toPtr unsafe.Pointer, toLen <span style=color:#0b0;font-weight:700>int</span>, fromPtr unsafe.Pointer, fromLen <span style=color:#0b0;font-weight:700>int</span>, width <span style=color:#0b0;font-weight:700>uintptr</span>) <span style=color:#0b0;font-weight:700>int</span> {
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> fromLen <span style=color:#666>==</span> <span style=color:#666>0</span> <span style=color:#666>||</span> toLen <span style=color:#666>==</span> <span style=color:#666>0</span> {
+</span></span><span style=display:flex><span>      <span style=color:#a2f;font-weight:700>return</span> <span style=color:#666>0</span>
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>   n <span style=color:#666>:=</span> fromLen
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> toLen &lt; n {
+</span></span><span style=display:flex><span>      n = toLen
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> width <span style=color:#666>==</span> <span style=color:#666>0</span> {
+</span></span><span style=display:flex><span>      <span style=color:#a2f;font-weight:700>return</span> n
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>   size <span style=color:#666>:=</span> <span style=color:#a2f>uintptr</span>(n) <span style=color:#666>*</span> width
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> raceenabled {
+</span></span><span style=display:flex><span>      callerpc <span style=color:#666>:=</span> <span style=color:#00a000>getcallerpc</span>()
+</span></span><span style=display:flex><span>      pc <span style=color:#666>:=</span> <span style=color:#00a000>funcPC</span>(slicecopy)
+</span></span><span style=display:flex><span>      <span style=color:#00a000>racereadrangepc</span>(fromPtr, size, callerpc, pc)
+</span></span><span style=display:flex><span>      <span style=color:#00a000>racewriterangepc</span>(toPtr, size, callerpc, pc)
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> msanenabled {
+</span></span><span style=display:flex><span>      <span style=color:#00a000>msanread</span>(fromPtr, size)
+</span></span><span style=display:flex><span>      <span style=color:#00a000>msanwrite</span>(toPtr, size)
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> size <span style=color:#666>==</span> <span style=color:#666>1</span> { <span style=color:#080;font-style:italic>// common case worth about 2x to do here
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>      <span style=color:#080;font-style:italic>// TODO: is this still worth it with new memmove impl?
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>      <span style=color:#666>*</span>(<span style=color:#666>*</span><span style=color:#0b0;font-weight:700>byte</span>)(toPtr) = <span style=color:#666>*</span>(<span style=color:#666>*</span><span style=color:#0b0;font-weight:700>byte</span>)(fromPtr) <span style=color:#080;font-style:italic>// known to be a byte pointer
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   } <span style=color:#a2f;font-weight:700>else</span> {
+</span></span><span style=display:flex><span>      <span style=color:#00a000>memmove</span>(toPtr, fromPtr, size)
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>return</span> n
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><p>例</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>main</span>() {
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>   array <span style=color:#666>:=</span> []<span style=color:#0b0;font-weight:700>int</span>{<span style=color:#666>10</span>, <span style=color:#666>20</span>, <span style=color:#666>30</span>, <span style=color:#666>40</span>}
+</span></span><span style=display:flex><span>   slice <span style=color:#666>:=</span> <span style=color:#a2f>make</span>([]<span style=color:#0b0;font-weight:700>int</span>, <span style=color:#666>6</span>)
+</span></span><span style=display:flex><span>   n <span style=color:#666>:=</span> <span style=color:#a2f>copy</span>(slice, array)
+</span></span><span style=display:flex><span>   fmt.<span style=color:#00a000>Println</span>(n, slice)
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#080;font-style:italic>//output
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#666>4</span> [<span style=color:#666>10</span> <span style=color:#666>20</span> <span style=color:#666>30</span> <span style=color:#666>40</span> <span style=color:#666>0</span> <span style=color:#666>0</span>]
+</span></span></code></pre></div><p>注意</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>main</span>() {
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>   slice <span style=color:#666>:=</span> []<span style=color:#0b0;font-weight:700>int</span>{<span style=color:#666>10</span>, <span style=color:#666>20</span>, <span style=color:#666>30</span>, <span style=color:#666>40</span>}
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>for</span> index, value <span style=color:#666>:=</span> <span style=color:#a2f;font-weight:700>range</span> slice {
+</span></span><span style=display:flex><span>      fmt.<span style=color:#00a000>Printf</span>(<span style=color:#b44>&#34;value = %d , value-addr = %x , slice-addr = %x\n&#34;</span>, value, <span style=color:#666>&amp;</span>value, <span style=color:#666>&amp;</span>slice[index])
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#080;font-style:italic>//output
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>value = <span style=color:#666>10</span> , value<span style=color:#666>-</span>addr = c000018098 , slice<span style=color:#666>-</span>addr = c00000e200
+</span></span><span style=display:flex><span>value = <span style=color:#666>20</span> , value<span style=color:#666>-</span>addr = c000018098 , slice<span style=color:#666>-</span>addr = c00000e208
+</span></span><span style=display:flex><span>value = <span style=color:#666>30</span> , value<span style=color:#666>-</span>addr = c000018098 , slice<span style=color:#666>-</span>addr = c00000e210
+</span></span><span style=display:flex><span>value = <span style=color:#666>40</span> , value<span style=color:#666>-</span>addr = c000018098 , slice<span style=color:#666>-</span>addr = c00000e218
+</span></span></code></pre></div><p>说明value的内存地址上的值的从slice复制过来的，直接操作value是不会对slice本身造成什么影响的。</p></div><footer class=post-footer></footer></article></section></div></div><div class=sidebar-toggle><div class=sidebar-toggle-line-wrap><span class="sidebar-toggle-line sidebar-toggle-line-first"></span>
+<span class="sidebar-toggle-line sidebar-toggle-line-middle"></span>
+<span class="sidebar-toggle-line sidebar-toggle-line-last"></span></div></div><aside id=sidebar class=sidebar><div class=sidebar-inner><ul class="sidebar-nav motion-element"><li class="sidebar-nav-toc sidebar-nav-active" data-target=post-toc-wrap>文章目录</li><li class=sidebar-nav-overview data-target=site-overview>站点概览</li></ul><section class="site-overview sidebar-panel"><div class="site-author motion-element" itemprop=author itemscope itemtype=http://schema.org/Person><img class=site-author-image itemprop=image src=/img/avatar.jpeg alt=Canon><p class=site-author-name itemprop=name>Canon</p><p class="site-description motion-element" itemprop=description>慢慢走, 慢慢来!</p></div><nav class="site-state motion-element"><div class="site-state-item site-state-posts"><a href=/post/><span class=site-state-item-count>48</span>
+<span class=site-state-item-name>日志</span></a></div><div class="site-state-item site-state-categories"><a href=/categories/><span class=site-state-item-count>14</span>
+<span class=site-state-item-name>分类</span></a></div><div class="site-state-item site-state-tags"><a href=/tags/><span class=site-state-item-count>12</span>
+<span class=site-state-item-name>标签</span></a></div></nav><div class="links-of-author motion-element"><span class=links-of-author-item><a href=https://github.com/MrVWY target=_blank title=GitHub><i class="fa fa-fw fa-github"></i>
+GitHub</a></span>
+<span class=links-of-author-item><a href=https://github.com/MrVWY/Learn-Note target=_blank title=笔记><i class="fa fa-fw fa-globe"></i>
+笔记</a></span></div><div class="tagcloud-of-blogroll motion-element tagcloud-of-blogroll-inline"><div class=tagcloud-of-blogroll-title><i class="fa fa-fw fa-tags"></i>
+标签云</div><ul class=tagcloud-of-blogroll-list><li class=tagcloud-of-blogroll-item><a href=/tags/go>Go
+<sup>20</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/%E8%B7%AF%E7%94%B1%E4%BA%A4%E6%8D%A2>路由交换
+<sup>6</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/leetcode>Leetcode
+<sup>4</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/linux>Linux
+<sup>4</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/tcp/ip>Tcp IP
+<sup>3</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/c>C
+<sup>1</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/js>Js
+<sup>1</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/network>Network
+<sup>1</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/nginx>Nginx
+<sup>1</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/tcp/iplinux>Tcp iplinux
+<sup>1</sup></a></li></ul></div></section><section class="post-toc-wrap motion-element sidebar-panel sidebar-panel-active"><div class=post-toc><div class=post-toc-content><nav id=TableOfContents><ul><li><ul><li><a href=#1切片结构>1、切片结构</a></li><li><a href=#2nil和空切片>2、nil和空切片</a></li><li><a href=#3切片扩容>3、切片扩容</a></li><li><a href=#4切片扩容的两种情况>4、切片扩容的两种情况</a></li><li><a href=#5切片copy>5、切片copy</a></li></ul></li></ul></nav></div></div></section></div></aside></div></main><footer id=footer class=footer><div class=footer-inner><div class=copyright><span class=copyright-year>&copy; 2021 - 2023</span>
+<span class=with-love><i class="fa fa-heart"></i></span>
+<span class=copyright-author>Canon Blog</span></div><div class=vistor-info><script async src=//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js></script>
+<span class=site-uv><i class="fa fa-user"></i>
+<span class=busuanzi-value id=busuanzi_value_site_uv></span></span>
+<span class=separator-line>/</span>
+<span class=site-pv><i class="fa fa-eye"></i>
+<span class=busuanzi-value id=busuanzi_value_site_pv></span></span></div><div class=license-info><span class=storage-info>Storage by
+<a href style=font-weight:700 target=_blank></a></span>
+<span class=separator-line>/</span>
+<span class=license-num><a href target=_blank></a></span></div></div></footer><div class=back-to-top><i class="fa fa-arrow-up"></i>
+<span id=scrollpercent><span>0</span>%</span></div></div><script type=text/javascript src=//unpkg.com/jquery@2.1.4/dist/jquery.min.js></script>
+<script type=text/javascript src=/js/search.js></script>
+<script type=text/javascript src=/js/affix.js></script>
+<script type=text/javascript>function detectIE(){var e=window.navigator.userAgent,t=e.indexOf("MSIE "),n=e.indexOf("Trident/"),s=e.indexOf("Edge/");return t>0||n>0||s>0?-1:1}function getCntViewHeight(){var t=$("#content").height(),e=$(window).height(),n=t>e?t-e:$(document).height()-e;return n}function getScrollbarWidth(){var e=$("<div />").addClass("scrollbar-measure").prependTo("body"),t=e[0],n=t.offsetWidth-t.clientWidth;return e.remove(),n}function registerBackTop(){var t=50,e=$(".back-to-top");$(window).on("scroll",function(){e.toggleClass("back-to-top-on",window.pageYOffset>t);var s=$(window).scrollTop(),o=getCntViewHeight(),i=s/o,n=Math.round(i*100),a=n>100?100:n;$("#scrollpercent>span").html(a)}),e.on("click",function(){$("html,body").animate({scrollTop:0,screenLeft:0},800)})}function initScrollSpy(){var e=".post-toc",s=$(e),t=".active-current";s.on("activate.bs.scrollspy",function(){var t=$(e+" .active").last();n(),t.addClass("active-current")}).on("clear.bs.scrollspy",n),$("body").scrollspy({target:e});function n(){$(e+" "+t).removeClass(t.substring(1))}}function initAffix(){var e=$(".header-inner").height(),t=parseInt($(".footer").outerHeight(!0),10),n=e+10;$(".sidebar-inner").affix({offset:{top:n,bottom:t}})}function initTOCDimension(){$(window).on("resize",function(){e&&clearTimeout(e),e=setTimeout(function(){var e=document.body.clientHeight-100;updateTOCHeight(e)},0)}),updateTOCHeight(document.body.clientHeight-100);var e,t=getScrollbarWidth();$(".post-toc").css("width","calc(100% + "+t+"px)")}function updateTOCHeight(e){e=e||"auto",$(".post-toc").css("max-height",e)}$(function(){var e,t,n,s,o=$(".header-inner").height()+10;$("#sidebar").css({"margin-top":o}).show(),t=parseInt($("#sidebar").css("margin-top")),n=parseInt($(".sidebar-inner").css("height")),e=t+n,s=$(".content-wrap").height(),s<e&&$(".content-wrap").css("min-height",e),$(".site-nav-toggle").on("click",function(){var e=$(".site-nav"),o=$(".toggle"),t="site-nav-on",i="toggle-close",n=e.hasClass(t),a=n?"slideUp":"slideDown",s=n?"removeClass":"addClass";e.stop()[a]("normal",function(){e[s](t),o[s](i)})}),registerBackTop(),initAffix(),initTOCDimension(),$(".sidebar-nav-toc").click(function(){$(this).addClass("sidebar-nav-active"),$(this).next().removeClass("sidebar-nav-active"),$("."+$(this).next().attr("data-target")).toggle(500),$("."+$(this).attr("data-target")).toggle(500)}),$(".sidebar-nav-overview").click(function(){$(this).addClass("sidebar-nav-active"),$(this).prev().removeClass("sidebar-nav-active"),$("."+$(this).prev().attr("data-target")).toggle(500),$("."+$(this).attr("data-target")).toggle(500)})})</script><script src=//unpkg.com/imageviewer@1.1.0/dist/viewer.min.js></script>
+<script type=text/javascript>$(function(){$(".post-body").viewer()})</script><script src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_SVG"></script>
+<script type=text/javascript src="//s7.addthis.com/js/300/addthis_widget.js#pubid=Your%20AddthisId"></script>
+<script>(function(){var t,e=document.createElement("script"),n=window.location.protocol.split(":")[0];n==="https"?e.src="https://zz.bdstatic.com/linksubmit/push.js":e.src="http://push.zhanzhang.baidu.com/push.js",t=document.getElementsByTagName("script")[0],t.parentNode.insertBefore(e,t)})()</script></body></html>

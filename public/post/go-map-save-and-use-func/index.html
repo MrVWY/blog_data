@@ -1,0 +1,178 @@
+<!doctype html><html lang=zh-cn dir=zh><head><meta charset=utf-8><meta http-equiv=x-ua-compatible content="IE=edge,chrome=1"><meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1"><meta http-equiv=content-security-policy content="upgrade-insecure-requests"><title>go map 存储方法 - Canon Blog</title><meta name=keywords content="博客,程序员,读书,笔记,技术,分享"><meta name=author content="Canon"><meta property="og:title" content="go map 存储方法"><meta property="og:site_name" content="Canon Blog"><meta property="og:image" content="/img/author.jpg"><meta name=title content="go map 存储方法 - Canon Blog"><meta name=description content="欢迎来到Canon的博客"><link rel="shortcut icon" href=/img/favicon.ico><link href=//unpkg.com/font-awesome@4.7.0/css/font-awesome.min.css rel=stylesheet type=text/css><link href=//unpkg.com/imageviewer@1.1.0/dist/viewer.min.css rel=stylesheet><link href=/css/main.css rel=stylesheet type=text/css><link href=/css/syntax.css rel=stylesheet type=text/css></head><body itemscope itemtype=http://schema.org/WebPage lang=zh-Hans><div class="container one-collumn sidebar-position-left page-home"><div class=headband></div><header id=header class=header itemscope itemtype=http://schema.org/WPHeader><div class=header-inner><div class=site-brand-container><div class=site-nav-toggle><div class=toggle role=button style=opacity:1;top:0><span class=toggle-line></span>
+<span class=toggle-line></span>
+<span class=toggle-line></span></div></div><div class=site-meta><div class=custom-logo-site-title><a href=/ class=brand rel=start><span class=logo-line-before><i></i></span>
+<span class=site-title>Canon Blog</span>
+<span class=logo-line-after><i></i></span></a></div><p class=site-subtitle>记录学习资料!</p></div><div class=site-nav-right><div class="toggle popup-trigger" style=opacity:1;top:0><i class="fa fa-search fa-fw fa-lg"></i></div></div></div><nav class=site-nav><ul id=menu class=menu><li class=menu-item><a href=/ rel=section><i class="menu-item-icon fa fa-fw fa-home"></i><br>首页</a></li><li class="menu-item menu-item-active"><a href=/post rel=section><i class="menu-item-icon fa fa-fw fa-archive"></i><br>归档</a></li><li class="menu-item menu-item-search"><a href=javascript:; class=popup-trigger><i class="menu-item-icon fa fa-search fa-fw"></i><br>搜索</a></li></ul><div class=site-search><div class="popup search-popup local-search-popup"><div class="local-search-header clearfix"><span class=search-icon><i class="fa fa-search"></i></span>
+<span class=popup-btn-close><i class="fa fa-times-circle"></i></span><div class=local-search-input-wrapper><input autocomplete=off placeholder=搜索关键字... spellcheck=false type=text id=local-search-input autocapitalize=none autocorrect=off></div></div><div id=local-search-result></div></div></div></nav></div></header><main id=main class=main><div class=main-inner><div class=content-wrap><div id=content class=content><section id=posts class=posts-expand><article class="post post-type-normal" itemscope itemtype=http://schema.org/Article><header class=post-header><h1 class=post-title itemprop="name headline" style=font-weight:700><a class=post-title-link href=/post/go-map-save-and-use-func/ itemprop=url>go map 存储方法</a></h1></header><div class=post-body itemprop=articleBody><h4 id=背景>背景</h4><p>最近在公司重构个系统的时候，由于某一个流程需要按需来自定义功能来进行处理，于是我想着用一个map来做一个映射关系，然后在这个流程中利用一个标记来匹配map中的自定义功能函数，以此达到按需处理。但是一番敲击之后，发现效果不尽人意，最主要的还是如果要用map做映射关系，那么就必须要在开头import一堆自定义函数包。</p><p>例如下面这个例子</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#080;font-style:italic>// server/
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>package</span> main
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>import</span> (
+</span></span><span style=display:flex><span>	<span style=color:#b44>&#34;fmt&#34;</span>
+</span></span><span style=display:flex><span>    <span style=color:#b44>&#34;server/a&#34;</span>
+</span></span><span style=display:flex><span>	<span style=color:#b44>&#34;server/b&#34;</span>
+</span></span><span style=display:flex><span>	<span style=color:#666>......</span>.
+</span></span><span style=display:flex><span>)
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>main</span>() {
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>    functions <span style=color:#666>:=</span> <span style=color:#00a000>buildFunctions</span>()
+</span></span><span style=display:flex><span>    f <span style=color:#666>:=</span> functions[<span style=color:#b44>&#34;isInValid&#34;</span>]
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>    <span style=color:#080;font-style:italic>//  f(&#34;hello&#34;)
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>buildFunctions</span>() <span style=color:#a2f;font-weight:700>map</span>[<span style=color:#0b0;font-weight:700>string</span>]<span style=color:#a2f;font-weight:700>func</span>() <span style=color:#0b0;font-weight:700>bool</span> {
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>    functions <span style=color:#666>:=</span> <span style=color:#a2f;font-weight:700>map</span>[<span style=color:#0b0;font-weight:700>string</span>]<span style=color:#a2f;font-weight:700>func</span>() <span style=color:#0b0;font-weight:700>bool</span>{
+</span></span><span style=display:flex><span>        <span style=color:#b44>&#34;isInValid&#34;</span>:   a.IsInValid,
+</span></span><span style=display:flex><span>        <span style=color:#b44>&#34;isAvailable&#34;</span>: b.IsAvailable,
+</span></span><span style=display:flex><span>        <span style=color:#666>......</span>
+</span></span><span style=display:flex><span>    }
+</span></span><span style=display:flex><span>    <span style=color:#a2f;font-weight:700>return</span> functions
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// server/a/
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>IsInValid</span>(s <span style=color:#0b0;font-weight:700>string</span>) <span style=color:#0b0;font-weight:700>bool</span> {
+</span></span><span style=display:flex><span>    fmt.<span style=color:#00a000>Println</span>(<span style=color:#b44>&#34;Invalid &#34;</span>, s)
+</span></span><span style=display:flex><span>    <span style=color:#a2f;font-weight:700>return</span> <span style=color:#a2f;font-weight:700>true</span>
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// server/B/
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>IsAvailable</span>(s <span style=color:#0b0;font-weight:700>string</span>, s1 <span style=color:#0b0;font-weight:700>string</span>) <span style=color:#0b0;font-weight:700>bool</span> {
+</span></span><span style=display:flex><span>    <span style=color:#a2f;font-weight:700>return</span> <span style=color:#a2f;font-weight:700>true</span>
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><h4 id=思考>思考</h4><p>由于旧系统是用nodejs写的，其可以动态的将函数require存进map中，我们只需要定义好路径和函数名字，就可以以拼接的方式将函数require存进map中，如下所示</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-v data-lang=v><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#b8860b>entry</span>[<span style=color:#b8860b>mod</span>] <span style=color:#666>=</span> <span style=color:#b8860b>load_module</span> <span style=color:#b8860b>mod</span> <span style=color:#a2f;font-weight:700>for</span> <span style=color:#b8860b>mod</span> <span style=color:#a2f;font-weight:700>in</span> [
+</span></span><span style=display:flex><span>  <span style=color:#b44>&#34;a&#34;</span>
+</span></span><span style=display:flex><span>  <span style=color:#b44>&#34;b&#34;</span>
+</span></span><span style=display:flex><span>  <span style=color:#666>......</span> <span style=color:#080;font-style:italic>//函数名
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>]
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>module</span>.<span style=color:#b8860b>exports</span> <span style=color:#666>=</span> <span style=color:#b8860b>load_module</span> <span style=color:#666>=</span> (<span style=color:#b8860b>module_name</span>, <span style=color:#b8860b>proj</span> <span style=color:#666>=</span> <span style=color:#b8860b>argv</span>.<span style=color:#b8860b>project</span>) <span style=color:#666>-</span>&gt;
+</span></span><span style=display:flex><span>  <span style=color:#b8860b>try</span>
+</span></span><span style=display:flex><span>    <span style=color:#b8860b>obj_common</span> <span style=color:#666>=</span> <span style=color:#b8860b>require</span> <span style=color:#b44>&#34;./#{module_name}&#34;</span>
+</span></span><span style=display:flex><span>  <span style=color:#b8860b>catch</span> <span style=color:#b8860b>err</span>
+</span></span><span style=display:flex><span>    <span style=color:#b8860b>debug</span> <span style=color:#b44>&#34;未找到 #{module_name}, #{err.stack}&#34;</span>.<span style=color:#b8860b>bold</span>.<span style=color:#b8860b>red</span>
+</span></span><span style=display:flex><span>  <span style=color:#b8860b>try</span>
+</span></span><span style=display:flex><span>    <span style=color:#b8860b>obj_proj</span> <span style=color:#666>=</span> <span style=color:#b8860b>require</span> <span style=color:#b44>&#34;./proj/#{proj}/#{module_name}&#34;</span>
+</span></span><span style=display:flex><span>    <span style=color:#666>#</span> <span style=color:#b8860b>debug</span> <span style=color:#b44>&#34;./proj/#{proj}/#{module_name}&#34;</span>
+</span></span><span style=display:flex><span>  <span style=color:#b8860b>catch</span> <span style=color:#b8860b>err</span>
+</span></span><span style=display:flex><span>    <span style=color:#666>#</span> <span style=color:#b8860b>debug</span> <span style=color:#b44>&#34;#{err}&#34;</span>
+</span></span><span style=display:flex><span>  <span style=color:#a2f;font-weight:700>return</span> <span style=color:#b8860b>_</span>.<span style=color:#b8860b>assign</span> <span style=color:#b8860b>obj_common</span>, <span style=color:#b8860b>obj_proj</span> <span style=color:#a2f;font-weight:700>if</span> <span style=color:#b44>&#34;function&#34;</span> <span style=color:#666>!=</span> <span style=color:#a2f;font-weight:700>typeof</span> <span style=color:#b8860b>obj_common</span>
+</span></span><span style=display:flex><span>  <span style=color:#b8860b>obj_proj</span> <span style=color:#a2f;font-weight:700>or</span> <span style=color:#b8860b>obj_common</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#080;font-style:italic>//other js file
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>module</span>.<span style=color:#b8860b>exports</span> <span style=color:#666>=</span> <span style=color:#b8860b>a</span> <span style=color:#666>=</span> (<span style=color:#b8860b>str</span>) <span style=color:#666>-</span>&gt;
+</span></span><span style=display:flex><span>  <span style=color:#b8860b>console</span>.<span style=color:#00a000>log</span>(<span style=color:#b44>&#34;a&#34;</span>, <span style=color:#b8860b>str</span>)
+</span></span><span style=display:flex><span>  
+</span></span><span style=display:flex><span><span style=color:#080;font-style:italic>//other js file
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>module</span>.<span style=color:#b8860b>exports</span> <span style=color:#666>=</span> <span style=color:#b8860b>b</span> <span style=color:#666>=</span> (<span style=color:#b8860b>str</span>) <span style=color:#666>-</span>&gt;
+</span></span><span style=display:flex><span>  <span style=color:#b8860b>console</span>.<span style=color:#00a000>log</span>(<span style=color:#b44>&#34;b&#34;</span>, <span style=color:#b8860b>str</span>)
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#080;font-style:italic>//最终就可以生成一个map对象
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#b8860b>entry</span>[<span style=color:#b8860b>a</span>] <span style=color:#666>=</span> <span style=color:#b8860b>a</span>
+</span></span><span style=display:flex><span><span style=color:#b8860b>entry</span>[<span style=color:#b8860b>b</span>] <span style=color:#666>=</span> <span style=color:#b8860b>b</span>
+</span></span></code></pre></div><p>基于旧系统的这种处理方式，在go中利用map去一个一个在map中做映射就会导致开头会出现一大堆import包的语句。</p><h4 id=解决>解决</h4><p>在与公司的大佬的建议下，他建议使用typescript编写这一功能，然后转成lua代码。最后嵌入进golang中。于是本人变浅尝一下。</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-fallback data-lang=fallback><span style=display:flex><span>//main.ts
+</span></span><span style=display:flex><span>let A = new Map()
+</span></span><span style=display:flex><span>function L(s:string) {
+</span></span><span style=display:flex><span>    let a = require(&#34;./ProjectA/&#34; + s)
+</span></span><span style=display:flex><span>    A.set(s,a.My)
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>function Say(s:string) {
+</span></span><span style=display:flex><span>    L(s)
+</span></span><span style=display:flex><span>    let a = A.get(s)
+</span></span><span style=display:flex><span>    console.log(&#34;s&#34;, s)
+</span></span><span style=display:flex><span>    console.log(&#34;a&#34;, a)
+</span></span><span style=display:flex><span>    a()
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>//ProjectA/A
+</span></span><span style=display:flex><span>export function My() {
+</span></span><span style=display:flex><span>    console.log(&#34;This is a function A ! &#34;) 
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>//tsconfig.json
+</span></span><span style=display:flex><span>{
+</span></span><span style=display:flex><span>  &#34;compilerOptions&#34;: {
+</span></span><span style=display:flex><span>    &#34;target&#34;: &#34;esnext&#34;,
+</span></span><span style=display:flex><span>    &#34;lib&#34;: [&#34;esnext&#34;,&#34;dom&#34;],
+</span></span><span style=display:flex><span>    &#34;moduleResolution&#34;: &#34;node&#34;,
+</span></span><span style=display:flex><span>    &#34;types&#34;: [&#34;node&#34;],
+</span></span><span style=display:flex><span>    &#34;strict&#34;: true
+</span></span><span style=display:flex><span>  },
+</span></span><span style=display:flex><span>  &#34;tstl&#34;: {
+</span></span><span style=display:flex><span>    &#34;luaTarget&#34;: &#34;5.3&#34;,
+</span></span><span style=display:flex><span>    &#34;noImplicitSelf&#34;:true,
+</span></span><span style=display:flex><span>    // 是否打包为单个lua文件
+</span></span><span style=display:flex><span>    &#34;luaBundle&#34;:&#34;api.lua&#34;,
+</span></span><span style=display:flex><span>    &#34;luaBundleEntry&#34;:&#34;main.ts&#34;
+</span></span><span style=display:flex><span>  }
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>cmd : npm run build
+</span></span></code></pre></div><p>通过上述运行npm run build命令之后会得到一个api.lua文件，接着我们把它嵌入进go中，使其通过传一个参数A去加载ProjectA/A中的My函数。</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#a2f;font-weight:700>package</span> main
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>import</span> (
+</span></span><span style=display:flex><span>	<span style=color:#b44>&#34;fmt&#34;</span>
+</span></span><span style=display:flex><span>	lua <span style=color:#b44>&#34;github.com/yuin/gopher-lua&#34;</span>
+</span></span><span style=display:flex><span>)
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>main</span>() {
+</span></span><span style=display:flex><span>	L <span style=color:#666>:=</span> lua.<span style=color:#00a000>NewState</span>()
+</span></span><span style=display:flex><span>	<span style=color:#a2f;font-weight:700>defer</span> L.<span style=color:#00a000>Close</span>()
+</span></span><span style=display:flex><span>	<span style=color:#a2f;font-weight:700>if</span> err <span style=color:#666>:=</span> L.<span style=color:#00a000>DoFile</span>(<span style=color:#b44>&#34;api.lua&#34;</span>); err <span style=color:#666>!=</span> <span style=color:#a2f;font-weight:700>nil</span> {
+</span></span><span style=display:flex><span>		<span style=color:#a2f>panic</span>(err)
+</span></span><span style=display:flex><span>	}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#a2f;font-weight:700>if</span> err <span style=color:#666>:=</span> L.<span style=color:#00a000>CallByParam</span>(lua.P{
+</span></span><span style=display:flex><span>		Fn:      L.<span style=color:#00a000>GetGlobal</span>(<span style=color:#b44>&#34;Say&#34;</span>),
+</span></span><span style=display:flex><span>		NRet:    <span style=color:#666>1</span>,    <span style=color:#080;font-style:italic>// 指定返回值数量
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>		Protect: <span style=color:#a2f;font-weight:700>true</span>, <span style=color:#080;font-style:italic>// 如果出现异常，是panic还是返回err
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	}, lua.<span style=color:#00a000>LString</span>(<span style=color:#b44>&#34;A&#34;</span>)); err <span style=color:#666>!=</span> <span style=color:#a2f;font-weight:700>nil</span> {
+</span></span><span style=display:flex><span>		fmt.<span style=color:#00a000>Println</span>(err.<span style=color:#00a000>Error</span>())
+</span></span><span style=display:flex><span>	}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#080;font-style:italic>//out
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>s       A                     
+</span></span><span style=display:flex><span>a       function: <span style=color:#666>0xc000219b80</span>
+</span></span><span style=display:flex><span>This is a function A !   
+</span></span></code></pre></div><h4 id=总结>总结</h4><p>通过这种方式，我们可以很灵活的在golang去动态的加载某个自定义的方法和功能</p><h4 id=reference>Reference</h4><ol><li><a href=https://stackoverflow.com/questions/52298469/map-to-store-generic-type-functions-in-go target=_blank rel=noopener>https://stackoverflow.com/questions/52298469/map-to-store-generic-type-functions-in-go</a></li><li><a href=https://github.com/yuin/gopher-lua target=_blank rel=noopener>https://github.com/yuin/gopher-lua</a></li><li><a href=https://typescripttolua.github.io/ target=_blank rel=noopener>https://typescripttolua.github.io/</a></li><li><a href=https://gitee.com/zmwcodediy/lua-ts-demo target=_blank rel=noopener>https://gitee.com/zmwcodediy/lua-ts-demo</a></li></ol></div><footer class=post-footer></footer></article></section></div></div><div class=sidebar-toggle><div class=sidebar-toggle-line-wrap><span class="sidebar-toggle-line sidebar-toggle-line-first"></span>
+<span class="sidebar-toggle-line sidebar-toggle-line-middle"></span>
+<span class="sidebar-toggle-line sidebar-toggle-line-last"></span></div></div><aside id=sidebar class=sidebar><div class=sidebar-inner><ul class="sidebar-nav motion-element"><li class="sidebar-nav-toc sidebar-nav-active" data-target=post-toc-wrap>文章目录</li><li class=sidebar-nav-overview data-target=site-overview>站点概览</li></ul><section class="site-overview sidebar-panel"><div class="site-author motion-element" itemprop=author itemscope itemtype=http://schema.org/Person><img class=site-author-image itemprop=image src=/img/avatar.jpeg alt=Canon><p class=site-author-name itemprop=name>Canon</p><p class="site-description motion-element" itemprop=description>慢慢走, 慢慢来!</p></div><nav class="site-state motion-element"><div class="site-state-item site-state-posts"><a href=/post/><span class=site-state-item-count>48</span>
+<span class=site-state-item-name>日志</span></a></div><div class="site-state-item site-state-categories"><a href=/categories/><span class=site-state-item-count>14</span>
+<span class=site-state-item-name>分类</span></a></div><div class="site-state-item site-state-tags"><a href=/tags/><span class=site-state-item-count>12</span>
+<span class=site-state-item-name>标签</span></a></div></nav><div class="links-of-author motion-element"><span class=links-of-author-item><a href=https://github.com/MrVWY target=_blank title=GitHub><i class="fa fa-fw fa-github"></i>
+GitHub</a></span>
+<span class=links-of-author-item><a href=https://github.com/MrVWY/Learn-Note target=_blank title=笔记><i class="fa fa-fw fa-globe"></i>
+笔记</a></span></div><div class="tagcloud-of-blogroll motion-element tagcloud-of-blogroll-inline"><div class=tagcloud-of-blogroll-title><i class="fa fa-fw fa-tags"></i>
+标签云</div><ul class=tagcloud-of-blogroll-list><li class=tagcloud-of-blogroll-item><a href=/tags/go>Go
+<sup>20</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/%E8%B7%AF%E7%94%B1%E4%BA%A4%E6%8D%A2>路由交换
+<sup>6</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/leetcode>Leetcode
+<sup>4</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/linux>Linux
+<sup>4</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/tcp/ip>Tcp IP
+<sup>3</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/c>C
+<sup>1</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/js>Js
+<sup>1</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/network>Network
+<sup>1</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/nginx>Nginx
+<sup>1</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/tcp/iplinux>Tcp iplinux
+<sup>1</sup></a></li></ul></div></section><section class="post-toc-wrap motion-element sidebar-panel sidebar-panel-active"><div class=post-toc><div class=post-toc-content><nav id=TableOfContents><ul><li><ul><li></li></ul></li></ul></nav></div></div></section></div></aside></div></main><footer id=footer class=footer><div class=footer-inner><div class=copyright><span class=copyright-year>&copy; 2021 - 2023</span>
+<span class=with-love><i class="fa fa-heart"></i></span>
+<span class=copyright-author>Canon Blog</span></div><div class=vistor-info><script async src=//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js></script>
+<span class=site-uv><i class="fa fa-user"></i>
+<span class=busuanzi-value id=busuanzi_value_site_uv></span></span>
+<span class=separator-line>/</span>
+<span class=site-pv><i class="fa fa-eye"></i>
+<span class=busuanzi-value id=busuanzi_value_site_pv></span></span></div><div class=license-info><span class=storage-info>Storage by
+<a href style=font-weight:700 target=_blank></a></span>
+<span class=separator-line>/</span>
+<span class=license-num><a href target=_blank></a></span></div></div></footer><div class=back-to-top><i class="fa fa-arrow-up"></i>
+<span id=scrollpercent><span>0</span>%</span></div></div><script type=text/javascript src=//unpkg.com/jquery@2.1.4/dist/jquery.min.js></script>
+<script type=text/javascript src=/js/search.js></script>
+<script type=text/javascript src=/js/affix.js></script>
+<script type=text/javascript>function detectIE(){var e=window.navigator.userAgent,t=e.indexOf("MSIE "),n=e.indexOf("Trident/"),s=e.indexOf("Edge/");return t>0||n>0||s>0?-1:1}function getCntViewHeight(){var t=$("#content").height(),e=$(window).height(),n=t>e?t-e:$(document).height()-e;return n}function getScrollbarWidth(){var e=$("<div />").addClass("scrollbar-measure").prependTo("body"),t=e[0],n=t.offsetWidth-t.clientWidth;return e.remove(),n}function registerBackTop(){var t=50,e=$(".back-to-top");$(window).on("scroll",function(){e.toggleClass("back-to-top-on",window.pageYOffset>t);var s=$(window).scrollTop(),o=getCntViewHeight(),i=s/o,n=Math.round(i*100),a=n>100?100:n;$("#scrollpercent>span").html(a)}),e.on("click",function(){$("html,body").animate({scrollTop:0,screenLeft:0},800)})}function initScrollSpy(){var e=".post-toc",s=$(e),t=".active-current";s.on("activate.bs.scrollspy",function(){var t=$(e+" .active").last();n(),t.addClass("active-current")}).on("clear.bs.scrollspy",n),$("body").scrollspy({target:e});function n(){$(e+" "+t).removeClass(t.substring(1))}}function initAffix(){var e=$(".header-inner").height(),t=parseInt($(".footer").outerHeight(!0),10),n=e+10;$(".sidebar-inner").affix({offset:{top:n,bottom:t}})}function initTOCDimension(){$(window).on("resize",function(){e&&clearTimeout(e),e=setTimeout(function(){var e=document.body.clientHeight-100;updateTOCHeight(e)},0)}),updateTOCHeight(document.body.clientHeight-100);var e,t=getScrollbarWidth();$(".post-toc").css("width","calc(100% + "+t+"px)")}function updateTOCHeight(e){e=e||"auto",$(".post-toc").css("max-height",e)}$(function(){var e,t,n,s,o=$(".header-inner").height()+10;$("#sidebar").css({"margin-top":o}).show(),t=parseInt($("#sidebar").css("margin-top")),n=parseInt($(".sidebar-inner").css("height")),e=t+n,s=$(".content-wrap").height(),s<e&&$(".content-wrap").css("min-height",e),$(".site-nav-toggle").on("click",function(){var e=$(".site-nav"),o=$(".toggle"),t="site-nav-on",i="toggle-close",n=e.hasClass(t),a=n?"slideUp":"slideDown",s=n?"removeClass":"addClass";e.stop()[a]("normal",function(){e[s](t),o[s](i)})}),registerBackTop(),initAffix(),initTOCDimension(),$(".sidebar-nav-toc").click(function(){$(this).addClass("sidebar-nav-active"),$(this).next().removeClass("sidebar-nav-active"),$("."+$(this).next().attr("data-target")).toggle(500),$("."+$(this).attr("data-target")).toggle(500)}),$(".sidebar-nav-overview").click(function(){$(this).addClass("sidebar-nav-active"),$(this).prev().removeClass("sidebar-nav-active"),$("."+$(this).prev().attr("data-target")).toggle(500),$("."+$(this).attr("data-target")).toggle(500)})})</script><script src=//unpkg.com/imageviewer@1.1.0/dist/viewer.min.js></script>
+<script type=text/javascript>$(function(){$(".post-body").viewer()})</script><script src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_SVG"></script>
+<script type=text/javascript src="//s7.addthis.com/js/300/addthis_widget.js#pubid=Your%20AddthisId"></script>
+<script>(function(){var t,e=document.createElement("script"),n=window.location.protocol.split(":")[0];n==="https"?e.src="https://zz.bdstatic.com/linksubmit/push.js":e.src="http://push.zhanzhang.baidu.com/push.js",t=document.getElementsByTagName("script")[0],t.parentNode.insertBefore(e,t)})()</script></body></html>

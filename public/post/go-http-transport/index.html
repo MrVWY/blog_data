@@ -1,0 +1,147 @@
+<!doctype html><html lang=zh-cn dir=zh><head><meta charset=utf-8><meta http-equiv=x-ua-compatible content="IE=edge,chrome=1"><meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1"><meta http-equiv=content-security-policy content="upgrade-insecure-requests"><title>go http.transport - Canon Blog</title><meta name=keywords content="博客,程序员,读书,笔记,技术,分享"><meta name=author content="Canon"><meta property="og:title" content="go http.transport"><meta property="og:site_name" content="Canon Blog"><meta property="og:image" content="/img/author.jpg"><meta name=title content="go http.transport - Canon Blog"><meta name=description content="欢迎来到Canon的博客"><link rel="shortcut icon" href=/img/favicon.ico><link href=//unpkg.com/font-awesome@4.7.0/css/font-awesome.min.css rel=stylesheet type=text/css><link href=//unpkg.com/imageviewer@1.1.0/dist/viewer.min.css rel=stylesheet><link href=/css/main.css rel=stylesheet type=text/css><link href=/css/syntax.css rel=stylesheet type=text/css></head><body itemscope itemtype=http://schema.org/WebPage lang=zh-Hans><div class="container one-collumn sidebar-position-left page-home"><div class=headband></div><header id=header class=header itemscope itemtype=http://schema.org/WPHeader><div class=header-inner><div class=site-brand-container><div class=site-nav-toggle><div class=toggle role=button style=opacity:1;top:0><span class=toggle-line></span>
+<span class=toggle-line></span>
+<span class=toggle-line></span></div></div><div class=site-meta><div class=custom-logo-site-title><a href=/ class=brand rel=start><span class=logo-line-before><i></i></span>
+<span class=site-title>Canon Blog</span>
+<span class=logo-line-after><i></i></span></a></div><p class=site-subtitle>记录学习资料!</p></div><div class=site-nav-right><div class="toggle popup-trigger" style=opacity:1;top:0><i class="fa fa-search fa-fw fa-lg"></i></div></div></div><nav class=site-nav><ul id=menu class=menu><li class=menu-item><a href=/ rel=section><i class="menu-item-icon fa fa-fw fa-home"></i><br>首页</a></li><li class="menu-item menu-item-active"><a href=/post rel=section><i class="menu-item-icon fa fa-fw fa-archive"></i><br>归档</a></li><li class="menu-item menu-item-search"><a href=javascript:; class=popup-trigger><i class="menu-item-icon fa fa-search fa-fw"></i><br>搜索</a></li></ul><div class=site-search><div class="popup search-popup local-search-popup"><div class="local-search-header clearfix"><span class=search-icon><i class="fa fa-search"></i></span>
+<span class=popup-btn-close><i class="fa fa-times-circle"></i></span><div class=local-search-input-wrapper><input autocomplete=off placeholder=搜索关键字... spellcheck=false type=text id=local-search-input autocapitalize=none autocorrect=off></div></div><div id=local-search-result></div></div></div></nav></div></header><main id=main class=main><div class=main-inner><div class=content-wrap><div id=content class=content><section id=posts class=posts-expand><article class="post post-type-normal" itemscope itemtype=http://schema.org/Article><header class=post-header><h1 class=post-title itemprop="name headline" style=font-weight:700><a class=post-title-link href=/post/go-http-transport/ itemprop=url>go http.transport</a></h1></header><div class=post-body itemprop=articleBody><p>​ 理解一下golang标准库里面的net/http包中的client类型，但是其实client类型也是通过实现<code>RoundTripper</code>接口来实现一个http客户端，因此如果说不希望默认的client类型帮你预处理一遍的话，那么你可以直接定义一个http.transport去直接<code>获取返回来的resp</code>，就不必经过默认的client类型处理了。</p><h3 id=client客户端>client客户端</h3><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-fallback data-lang=fallback><span style=display:flex><span>	c := http.Client{
+</span></span><span style=display:flex><span>		Transport:     nil,
+</span></span><span style=display:flex><span>		CheckRedirect: nil,
+</span></span><span style=display:flex><span>		Jar:           nil,
+</span></span><span style=display:flex><span>		Timeout:       0,
+</span></span><span style=display:flex><span>	}
+</span></span><span style=display:flex><span>	c.Get()
+</span></span></code></pre></div><p>​ 通过查看源码，可以发现client.get最终也是通过实现RoundTripper来实现http的发送。具体代码流程如下</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-fallback data-lang=fallback><span style=display:flex><span>// DefaultTransport is the default implementation of Transport and is
+</span></span><span style=display:flex><span>// used by DefaultClient. It establishes network connections as needed
+</span></span><span style=display:flex><span>// and caches them for reuse by subsequent calls. It uses HTTP proxies
+</span></span><span style=display:flex><span>// as directed by the $HTTP_PROXY and $NO_PROXY (or $http_proxy and
+</span></span><span style=display:flex><span>// $no_proxy) environment variables.
+</span></span><span style=display:flex><span>var DefaultTransport RoundTripper = &amp;Transport{
+</span></span><span style=display:flex><span>	Proxy: ProxyFromEnvironment,
+</span></span><span style=display:flex><span>	DialContext: defaultTransportDialContext(&amp;net.Dialer{
+</span></span><span style=display:flex><span>		Timeout:   30 * time.Second,
+</span></span><span style=display:flex><span>		KeepAlive: 30 * time.Second,
+</span></span><span style=display:flex><span>	}),
+</span></span><span style=display:flex><span>	ForceAttemptHTTP2:     true,
+</span></span><span style=display:flex><span>	MaxIdleConns:          100,
+</span></span><span style=display:flex><span>	IdleConnTimeout:       90 * time.Second,
+</span></span><span style=display:flex><span>	TLSHandshakeTimeout:   10 * time.Second,
+</span></span><span style=display:flex><span>	ExpectContinueTimeout: 1 * time.Second,
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>func (c *Client) transport() RoundTripper {
+</span></span><span style=display:flex><span>	if c.Transport != nil {
+</span></span><span style=display:flex><span>		return c.Transport
+</span></span><span style=display:flex><span>	}
+</span></span><span style=display:flex><span>	return DefaultTransport
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>func (c *Client) send(req *Request, deadline time.Time) (resp *Response, didTimeout func() bool, err error) {
+</span></span><span style=display:flex><span>	if c.Jar != nil {
+</span></span><span style=display:flex><span>...
+</span></span><span style=display:flex><span>	resp, didTimeout, err = send(req, c.transport(), deadline)
+</span></span><span style=display:flex><span>...
+</span></span><span style=display:flex><span>	return resp, nil, nil
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>// send issues an HTTP request.
+</span></span><span style=display:flex><span>// Caller should close resp.Body when done reading from it.
+</span></span><span style=display:flex><span>func send(ireq *Request, rt RoundTripper, deadline time.Time) (resp *Response, didTimeout func() bool, err error) {
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>...
+</span></span><span style=display:flex><span>resp, err = rt.RoundTrip(req)
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>...
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><p>​ 最后的话通过定义http.transport来实现RoundTripper接口（http/transport.go），最终client就能通过DefaultTransport去调用，因此我们可以直接定义一个http.transport去直接<code>获取返回来的resp</code>，就不必经过默认的client类型处理了。</p><h3 id=client-类型>client 类型</h3><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-fallback data-lang=fallback><span style=display:flex><span>type Client struct {
+</span></span><span style=display:flex><span>    // Transport 指定执行独立、单次 HTTP 请求的机制。
+</span></span><span style=display:flex><span>    // 如果 Transport 为 nil，则使用 DefaultTransport 。
+</span></span><span style=display:flex><span>    Transport RoundTripper
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>    // CheckRedirect 指定处理重定向的策略。
+</span></span><span style=display:flex><span>    // 如果 CheckRedirect 不为 nil，客户端会在执行重定向之前调用本函数字段。
+</span></span><span style=display:flex><span>    // 参数 req 和 via 是将要执行的请求和已经执行的请求（切片，越新的请求越靠后）。
+</span></span><span style=display:flex><span>    // 如果 CheckRedirect 返回一个错误，本类型的 Get 方法不会发送请求 req，
+</span></span><span style=display:flex><span>    // 而是返回之前得到的最后一个回复和该错误。（包装进 url.Error 类型里）
+</span></span><span style=display:flex><span>    //
+</span></span><span style=display:flex><span>    // 如果CheckRedirect为nil，会采用默认策略：连续10此请求后停止。
+</span></span><span style=display:flex><span>    CheckRedirect func(req *Request, via []*Request) error
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>    // Jar 指定 cookie 管理器。
+</span></span><span style=display:flex><span>    // 如果Jar为nil，请求中不会发送 cookie ，回复中的 cookie 会被忽略。
+</span></span><span style=display:flex><span>    Jar CookieJar
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>    // Timeout 指定本类型的值执行请求的时间限制。
+</span></span><span style=display:flex><span>    // 该超时限制包括连接时间、重定向和读取回复主体的时间。
+</span></span><span style=display:flex><span>    // 计时器会在 Head 、 Get 、 Post 或 Do 方法返回后继续运作并在超时后中断回复主体的读取。
+</span></span><span style=display:flex><span>    //
+</span></span><span style=display:flex><span>    // Timeout 为零值表示不设置超时。
+</span></span><span style=display:flex><span>    //
+</span></span><span style=display:flex><span>    // Client 实例的 Transport 字段必须支持 CancelRequest 方法，
+</span></span><span style=display:flex><span>    // 否则 Client 会在试图用 Head 、 Get 、 Post 或 Do 方法执行请求时返回错误。
+</span></span><span style=display:flex><span>    // 本类型的 Transport 字段默认值（ DefaultTransport ）支持 CancelRequest 方法。
+</span></span><span style=display:flex><span>    Timeout time.Duration
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><h3 id=roundtripper-interface>RoundTripper interface</h3><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-fallback data-lang=fallback><span style=display:flex><span>type RoundTripper interface {
+</span></span><span style=display:flex><span>	// RoundTrip executes a single HTTP transaction, returning
+</span></span><span style=display:flex><span>	// a Response for the provided Request.
+</span></span><span style=display:flex><span>	//
+</span></span><span style=display:flex><span>	// RoundTrip should not attempt to interpret the response. In
+</span></span><span style=display:flex><span>	// particular, RoundTrip must return err == nil if it obtained
+</span></span><span style=display:flex><span>	// a response, regardless of the response&#39;s HTTP status code.
+</span></span><span style=display:flex><span>	// A non-nil err should be reserved for failure to obtain a
+</span></span><span style=display:flex><span>	// response. Similarly, RoundTrip should not attempt to
+</span></span><span style=display:flex><span>	// handle higher-level protocol details such as redirects,
+</span></span><span style=display:flex><span>	// authentication, or cookies.
+</span></span><span style=display:flex><span>	//
+</span></span><span style=display:flex><span>	// RoundTrip should not modify the request, except for
+</span></span><span style=display:flex><span>	// consuming and closing the Request&#39;s Body. RoundTrip may
+</span></span><span style=display:flex><span>	// read fields of the request in a separate goroutine. Callers
+</span></span><span style=display:flex><span>	// should not mutate or reuse the request until the Response&#39;s
+</span></span><span style=display:flex><span>	// Body has been closed.
+</span></span><span style=display:flex><span>	//
+</span></span><span style=display:flex><span>	// RoundTrip must always close the body, including on errors,
+</span></span><span style=display:flex><span>	// but depending on the implementation may do so in a separate
+</span></span><span style=display:flex><span>	// goroutine even after RoundTrip returns. This means that
+</span></span><span style=display:flex><span>	// callers wanting to reuse the body for subsequent requests
+</span></span><span style=display:flex><span>	// must arrange to wait for the Close call before doing so.
+</span></span><span style=display:flex><span>	//
+</span></span><span style=display:flex><span>	// The Request&#39;s URL and Header fields must be initialized.
+</span></span><span style=display:flex><span>	RoundTrip(*Request) (*Response, error)
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div></div><footer class=post-footer></footer></article></section></div></div><div class=sidebar-toggle><div class=sidebar-toggle-line-wrap><span class="sidebar-toggle-line sidebar-toggle-line-first"></span>
+<span class="sidebar-toggle-line sidebar-toggle-line-middle"></span>
+<span class="sidebar-toggle-line sidebar-toggle-line-last"></span></div></div><aside id=sidebar class=sidebar><div class=sidebar-inner><ul class="sidebar-nav motion-element"><li class="sidebar-nav-toc sidebar-nav-active" data-target=post-toc-wrap>文章目录</li><li class=sidebar-nav-overview data-target=site-overview>站点概览</li></ul><section class="site-overview sidebar-panel"><div class="site-author motion-element" itemprop=author itemscope itemtype=http://schema.org/Person><img class=site-author-image itemprop=image src=/img/avatar.jpeg alt=Canon><p class=site-author-name itemprop=name>Canon</p><p class="site-description motion-element" itemprop=description>慢慢走, 慢慢来!</p></div><nav class="site-state motion-element"><div class="site-state-item site-state-posts"><a href=/post/><span class=site-state-item-count>48</span>
+<span class=site-state-item-name>日志</span></a></div><div class="site-state-item site-state-categories"><a href=/categories/><span class=site-state-item-count>14</span>
+<span class=site-state-item-name>分类</span></a></div><div class="site-state-item site-state-tags"><a href=/tags/><span class=site-state-item-count>12</span>
+<span class=site-state-item-name>标签</span></a></div></nav><div class="links-of-author motion-element"><span class=links-of-author-item><a href=https://github.com/MrVWY target=_blank title=GitHub><i class="fa fa-fw fa-github"></i>
+GitHub</a></span>
+<span class=links-of-author-item><a href=https://github.com/MrVWY/Learn-Note target=_blank title=笔记><i class="fa fa-fw fa-globe"></i>
+笔记</a></span></div><div class="tagcloud-of-blogroll motion-element tagcloud-of-blogroll-inline"><div class=tagcloud-of-blogroll-title><i class="fa fa-fw fa-tags"></i>
+标签云</div><ul class=tagcloud-of-blogroll-list><li class=tagcloud-of-blogroll-item><a href=/tags/go>Go
+<sup>20</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/%E8%B7%AF%E7%94%B1%E4%BA%A4%E6%8D%A2>路由交换
+<sup>6</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/leetcode>Leetcode
+<sup>4</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/linux>Linux
+<sup>4</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/tcp/ip>Tcp IP
+<sup>3</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/c>C
+<sup>1</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/js>Js
+<sup>1</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/network>Network
+<sup>1</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/nginx>Nginx
+<sup>1</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/tcp/iplinux>Tcp iplinux
+<sup>1</sup></a></li></ul></div></section><section class="post-toc-wrap motion-element sidebar-panel sidebar-panel-active"><div class=post-toc><div class=post-toc-content><nav id=TableOfContents><ul><li><ul><li><a href=#client客户端>client客户端</a></li><li><a href=#client-类型>client 类型</a></li><li><a href=#roundtripper-interface>RoundTripper interface</a></li></ul></li></ul></nav></div></div></section></div></aside></div></main><footer id=footer class=footer><div class=footer-inner><div class=copyright><span class=copyright-year>&copy; 2021 - 2023</span>
+<span class=with-love><i class="fa fa-heart"></i></span>
+<span class=copyright-author>Canon Blog</span></div><div class=vistor-info><script async src=//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js></script>
+<span class=site-uv><i class="fa fa-user"></i>
+<span class=busuanzi-value id=busuanzi_value_site_uv></span></span>
+<span class=separator-line>/</span>
+<span class=site-pv><i class="fa fa-eye"></i>
+<span class=busuanzi-value id=busuanzi_value_site_pv></span></span></div><div class=license-info><span class=storage-info>Storage by
+<a href style=font-weight:700 target=_blank></a></span>
+<span class=separator-line>/</span>
+<span class=license-num><a href target=_blank></a></span></div></div></footer><div class=back-to-top><i class="fa fa-arrow-up"></i>
+<span id=scrollpercent><span>0</span>%</span></div></div><script type=text/javascript src=//unpkg.com/jquery@2.1.4/dist/jquery.min.js></script>
+<script type=text/javascript src=/js/search.js></script>
+<script type=text/javascript src=/js/affix.js></script>
+<script type=text/javascript>function detectIE(){var e=window.navigator.userAgent,t=e.indexOf("MSIE "),n=e.indexOf("Trident/"),s=e.indexOf("Edge/");return t>0||n>0||s>0?-1:1}function getCntViewHeight(){var t=$("#content").height(),e=$(window).height(),n=t>e?t-e:$(document).height()-e;return n}function getScrollbarWidth(){var e=$("<div />").addClass("scrollbar-measure").prependTo("body"),t=e[0],n=t.offsetWidth-t.clientWidth;return e.remove(),n}function registerBackTop(){var t=50,e=$(".back-to-top");$(window).on("scroll",function(){e.toggleClass("back-to-top-on",window.pageYOffset>t);var s=$(window).scrollTop(),o=getCntViewHeight(),i=s/o,n=Math.round(i*100),a=n>100?100:n;$("#scrollpercent>span").html(a)}),e.on("click",function(){$("html,body").animate({scrollTop:0,screenLeft:0},800)})}function initScrollSpy(){var e=".post-toc",s=$(e),t=".active-current";s.on("activate.bs.scrollspy",function(){var t=$(e+" .active").last();n(),t.addClass("active-current")}).on("clear.bs.scrollspy",n),$("body").scrollspy({target:e});function n(){$(e+" "+t).removeClass(t.substring(1))}}function initAffix(){var e=$(".header-inner").height(),t=parseInt($(".footer").outerHeight(!0),10),n=e+10;$(".sidebar-inner").affix({offset:{top:n,bottom:t}})}function initTOCDimension(){$(window).on("resize",function(){e&&clearTimeout(e),e=setTimeout(function(){var e=document.body.clientHeight-100;updateTOCHeight(e)},0)}),updateTOCHeight(document.body.clientHeight-100);var e,t=getScrollbarWidth();$(".post-toc").css("width","calc(100% + "+t+"px)")}function updateTOCHeight(e){e=e||"auto",$(".post-toc").css("max-height",e)}$(function(){var e,t,n,s,o=$(".header-inner").height()+10;$("#sidebar").css({"margin-top":o}).show(),t=parseInt($("#sidebar").css("margin-top")),n=parseInt($(".sidebar-inner").css("height")),e=t+n,s=$(".content-wrap").height(),s<e&&$(".content-wrap").css("min-height",e),$(".site-nav-toggle").on("click",function(){var e=$(".site-nav"),o=$(".toggle"),t="site-nav-on",i="toggle-close",n=e.hasClass(t),a=n?"slideUp":"slideDown",s=n?"removeClass":"addClass";e.stop()[a]("normal",function(){e[s](t),o[s](i)})}),registerBackTop(),initAffix(),initTOCDimension(),$(".sidebar-nav-toc").click(function(){$(this).addClass("sidebar-nav-active"),$(this).next().removeClass("sidebar-nav-active"),$("."+$(this).next().attr("data-target")).toggle(500),$("."+$(this).attr("data-target")).toggle(500)}),$(".sidebar-nav-overview").click(function(){$(this).addClass("sidebar-nav-active"),$(this).prev().removeClass("sidebar-nav-active"),$("."+$(this).prev().attr("data-target")).toggle(500),$("."+$(this).attr("data-target")).toggle(500)})})</script><script src=//unpkg.com/imageviewer@1.1.0/dist/viewer.min.js></script>
+<script type=text/javascript>$(function(){$(".post-body").viewer()})</script><script src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_SVG"></script>
+<script type=text/javascript src="//s7.addthis.com/js/300/addthis_widget.js#pubid=Your%20AddthisId"></script>
+<script>(function(){var t,e=document.createElement("script"),n=window.location.protocol.split(":")[0];n==="https"?e.src="https://zz.bdstatic.com/linksubmit/push.js":e.src="http://push.zhanzhang.baidu.com/push.js",t=document.getElementsByTagName("script")[0],t.parentNode.insertBefore(e,t)})()</script></body></html>

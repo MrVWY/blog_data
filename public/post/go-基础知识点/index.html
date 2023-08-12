@@ -1,0 +1,1063 @@
+<!doctype html><html lang=zh-cn dir=zh><head><meta charset=utf-8><meta http-equiv=x-ua-compatible content="IE=edge,chrome=1"><meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1"><meta http-equiv=content-security-policy content="upgrade-insecure-requests"><title>Go 基础知识点 - Canon Blog</title><meta name=keywords content="博客,程序员,读书,笔记,技术,分享"><meta name=author content="Canon"><meta property="og:title" content="Go 基础知识点"><meta property="og:site_name" content="Canon Blog"><meta property="og:image" content="/img/author.jpg"><meta name=title content="Go 基础知识点 - Canon Blog"><meta name=description content="欢迎来到Canon的博客"><link rel="shortcut icon" href=/img/favicon.ico><link href=//unpkg.com/font-awesome@4.7.0/css/font-awesome.min.css rel=stylesheet type=text/css><link href=//unpkg.com/imageviewer@1.1.0/dist/viewer.min.css rel=stylesheet><link href=/css/main.css rel=stylesheet type=text/css><link href=/css/syntax.css rel=stylesheet type=text/css></head><body itemscope itemtype=http://schema.org/WebPage lang=zh-Hans><div class="container one-collumn sidebar-position-left page-home"><div class=headband></div><header id=header class=header itemscope itemtype=http://schema.org/WPHeader><div class=header-inner><div class=site-brand-container><div class=site-nav-toggle><div class=toggle role=button style=opacity:1;top:0><span class=toggle-line></span>
+<span class=toggle-line></span>
+<span class=toggle-line></span></div></div><div class=site-meta><div class=custom-logo-site-title><a href=/ class=brand rel=start><span class=logo-line-before><i></i></span>
+<span class=site-title>Canon Blog</span>
+<span class=logo-line-after><i></i></span></a></div><p class=site-subtitle>记录学习资料!</p></div><div class=site-nav-right><div class="toggle popup-trigger" style=opacity:1;top:0><i class="fa fa-search fa-fw fa-lg"></i></div></div></div><nav class=site-nav><ul id=menu class=menu><li class=menu-item><a href=/ rel=section><i class="menu-item-icon fa fa-fw fa-home"></i><br>首页</a></li><li class="menu-item menu-item-active"><a href=/post rel=section><i class="menu-item-icon fa fa-fw fa-archive"></i><br>归档</a></li><li class="menu-item menu-item-search"><a href=javascript:; class=popup-trigger><i class="menu-item-icon fa fa-search fa-fw"></i><br>搜索</a></li></ul><div class=site-search><div class="popup search-popup local-search-popup"><div class="local-search-header clearfix"><span class=search-icon><i class="fa fa-search"></i></span>
+<span class=popup-btn-close><i class="fa fa-times-circle"></i></span><div class=local-search-input-wrapper><input autocomplete=off placeholder=搜索关键字... spellcheck=false type=text id=local-search-input autocapitalize=none autocorrect=off></div></div><div id=local-search-result></div></div></div></nav></div></header><main id=main class=main><div class=main-inner><div class=content-wrap><div id=content class=content><section id=posts class=posts-expand><article class="post post-type-normal" itemscope itemtype=http://schema.org/Article><header class=post-header><h1 class=post-title itemprop="name headline" style=font-weight:700><a class=post-title-link href=/post/go-%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86%E7%82%B9/ itemprop=url>Go 基础知识点</a></h1></header><div class=post-body itemprop=articleBody><p><strong>记录一下golang的基础要点，以方便后续复习</strong></p><h3 id=gc>GC</h3><h4 id=标记清除>标记清除</h4><p>​ 标记清除（Mark-Sweep）算法是最常见的垃圾收集算法，标记清除收集器是跟踪式垃圾收集器，其执行过程可以分成标记（Mark）和清除（Sweep）两个阶段：</p><ol><li>标记阶段 — 从根对象出发查找并标记堆中所有存活的对象；</li><li>清除阶段 — 遍历堆中的全部对象，回收未被标记的垃圾对象并将回收的内存加入空闲链表；</li></ol><p><img src=/images/Go%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86%E7%82%B9/GC-1.png alt></p><p>标记阶段结束后会进入清除阶段，在该阶段中收集器会依次遍历堆中的所有对象，释放其中没有被标记的 B、E 和 F 三个对象并将新的空闲内存空间以链表的结构串联起来，方便内存分配器的使用。</p><p><img src=/images/Go%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86%E7%82%B9/GC-2.png alt></p><p>​ 标记清除算法：垃圾收集器从垃圾收集的根对象出发，递归遍历这些对象指向的子对象并将所有可达的对象标记成存活；标记阶段结束后，垃圾收集器会依次遍历堆中的对象并清除其中的垃圾，整个过程需要标记对象的存活状态，<strong>用户程序在垃圾收集的过程中也不能执行</strong>（STW），我们需要用到更复杂的机制来解决这个 STW （Stop The World）的问题。</p><h4 id=三色标记算法>三色标记算法</h4><p>​ 为了解决原始标记清除算法带来的长时间 STW，多数现代的追踪式垃圾收集器都会实现三色标记算法的变种以缩短 STW 的时间。三色标记算法将程序中的对象分成白色、黑色和灰色三类<a href=https://draveness.me/golang/docs/part3-runtime/ch07-memory/golang-garbage-collector/#fn:4 target=_blank rel=noopener>4</a>
+：</p><ul><li>白色对象 — 潜在的垃圾，其内存可能会被垃圾收集器回收；</li><li>黑色对象 — 活跃的对象，包括不存在任何引用外部指针的对象以及从根对象可达的对象；</li><li>灰色对象 — 活跃的对象，因为存在指向白色对象的外部指针，垃圾收集器会扫描这些对象的子对象；</li></ul><p>​ 在垃圾收集器开始工作时，程序中不存在任何的黑色对象，垃圾收集的根对象会被标记成灰色，垃圾收集器只会从灰色对象集合中取出对象开始扫描，当灰色集合中不存在任何对象时，标记阶段就会结束。</p><p><img src=/images/Go%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86%E7%82%B9/GC-3.png alt></p><p>​ 三色标记垃圾收集器的工作原理很简单，我们可以将其归纳成以下几个步骤：</p><ol><li>从灰色对象的集合中选择一个灰色对象并将其标记成黑色；</li><li>将黑色对象指向的所有对象都标记成灰色，保证该对象和被该对象引用的对象都不会被回收；</li><li>重复上述两个步骤直到对象图中不存在灰色对象；</li></ol><p>​ 当三色的标记清除的标记阶段结束之后，应用程序的堆中就不存在任何的灰色对象，只能有黑色的存活对象以及白色的垃圾对象，垃圾收集器可以回收这些白色的垃圾。</p><h4 id=屏障机制>屏障机制</h4><p>​ 因为用户程序可能在标记执行的过程中修改对象的指针，所以三色标记清除算法本身是不可以并发或者增量执行的，它仍然需要 STW。</p><p>​ 本来不应该被回收的对象却被回收了，这在内存管理中是非常严重的错误，我们将这种错误称为悬挂指针，即指针没有指向特定类型的合法对象，影响了内存的安全性<a href=https://draveness.me/golang/docs/part3-runtime/ch07-memory/golang-garbage-collector/#fn:5 target=_blank rel=noopener>5</a>
+，想要并发或者增量地标记对象还是需要使用屏障技术。</p><p>想要在并发或者增量的标记算法中保证正确性，我们需要达成以下两种三色不变性（Tri-color invariant）中的一种：</p><ul><li>强三色不变性 — 黑色对象不会指向白色对象，只会指向灰色对象或者黑色对象；</li><li>弱三色不变性 — 黑色对象指向的白色对象必须包含一条从灰色对象经由多个白色对象的可达路径</li></ul><p><img src=/images/Go%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86%E7%82%B9/GC-4.png alt></p><p>​ 上图分别展示了遵循强三色不变性和弱三色不变性的堆内存，遵循上述两个不变性中的任意一个，我们都能保证垃圾收集算法的正确性，而屏障技术就是在并发或者增量标记过程中保证三色不变性的重要技术。</p><p>​ 垃圾收集中的屏障技术更像是一个钩子方法，它是在用户程序读取对象、创建新对象以及更新对象指针时执行的一段代码，根据操作类型的不同，我们可以将它们分成读屏障（Read barrier）和写屏障（Write barrier）两种，因为读屏障需要在读操作中加入代码片段，对用户程序的性能影响很大，所以编程语言往往都会采用写屏障保证三色不变性。</p><p>​ 造成引用对象丢失的条件：</p><ul><li>一个黑色的节点A新增了指向白色节点C的引用</li><li>并且白色节点C没有除了A之外的其他灰色节点的引用，或者存在但是在GC过程中被删除了</li></ul><p>​ 因此要满足弱三色不变性和强三色不变性，即可保证对象不丢失</p><ol><li><p>Dijistra 插入写屏障：满足强三色不变性：黑色节点不允许引用白色节点，当黑色节点新增了白色节点的引用时，将对应的白色节点改为灰色。</p><p>标记过程：</p><ul><li>垃圾收集器将根对象指向 A 对象标记成黑色并将 A 对象指向的对象 B 标记成灰色；</li><li>用户程序修改 A 对象的指针，将原本指向 B 对象的指针指向 C 对象，这时触发写屏障将 C 对象标记成灰色；</li><li>垃圾收集器依次遍历程序中的其他灰色对象，将它们分别标记成黑色；</li></ul><p><img src=/images/Go%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86%E7%82%B9/GC-5.png alt></p><p>缺点：</p><p>​ Dijkstra 的插入写屏障是一种相对保守的屏障技术，它会将<strong>有存活可能的对象都标记成灰色</strong>以满足强三色不变性。在如上所示的垃圾收集过程中，实际上不再存活的 B 对象最后没有被回收；而如果我们在第二和第三步之间将指向 C 对象的指针改回指向 B，垃圾收集器仍然认为 C 对象是存活的，这些被错误标记的垃圾对象只有在下一个循环才会被回收。</p><p>​ 插入式的 Dijkstra 写屏障虽然实现非常简单并且也能保证强三色不变性，但是它也有明显的缺点。因为栈上的对象在垃圾收集中也会被认为是根对象，所以为了保证内存的安全，Dijkstra 必须为栈上的对象增加写屏障或者在标记阶段完成重新对栈上的对象进行扫描，这两种方法各有各的缺点，前者会大幅度增加写入指针的额外开销，后者重新扫描栈对象时需要暂停程序</p></li><li><p>Yuasa 删除写屏障：满足弱三色不变性：黑色节点允许引用白色节点，但是该白色节点有其他灰色节点间接的引用（确保不会被遗漏）当白色节点被删除了一个引用时，悲观地认为它一定会被一个黑色节点新增引用，所以将它置为灰色</p></li></ol><h4 id=混合写屏障>混合写屏障</h4><p>​ 过程：</p><ol><li><p>GC开始时将栈上全部对象标记为黑色（之后不再进行第二次重复扫描，无需STW）</p></li><li><p>GC期间，任何在栈上创建的对象，均为黑色。</p></li><li><p>被删的对象标记为灰色。</p></li><li><p>被添加的对象标记为灰色。</p></li></ol><h4 id=gc-的触发条件>GC 的触发条件</h4><ol><li><p>主动触发(手动触发)，通过调用 runtime.GC 来触发 GC，此调用阻塞式地等待当前 GC 运行完毕。</p></li><li><p>被动触发，分为两种方式：</p><ul><li><p>使用系统监控，当超过两分钟没有产生任何 GC 时，强制触发 GC。</p></li><li><p>使用步调（Pacing）算法，其核心思想是控制内存增长的比例,每次内存分配时检查当前内存分配量是否已达到阈值（环境变量 GOGC）：默认 100%，即当内存扩大一倍时启用 GC。</p></li></ul></li></ol><h3 id=gpm-调度-和-csp-模型>GPM 调度 和 CSP 模型</h3><h4 id=csp-模型>CSP 模型</h4><p>CSP 模型是“以通信的方式来共享内存”，不同于传统的多线程通过共享内存来通信。用于描述两个独立的并发实体通过共享的通讯 channel (管道)进行通信的并发模型。</p><h4 id=gpm>GPM</h4><h5 id=ggoroutine>G（Goroutine）</h5><p>​ 即 Go 协程（Goroutine），每个 go 关键字都会创建一个协程。Goroutine 在 Go 语言运行时使用私有结构体 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/runtime2.go#L404 target=_blank rel=noopener><code>runtime.g</code></a>
+表示，结构体 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/runtime2.go#L404 target=_blank rel=noopener><code>runtime.g</code></a>
+的 <code>atomicstatus</code> 字段存储了当前 Goroutine 的状态。除了几个已经不被使用的以及与 GC 相关的状态之外，Goroutine 可能处于以下 9 种状态：</p><table><thead><tr><th>状态</th><th style=text-align:left>描述</th></tr></thead><tbody><tr><td><code>_Gidle</code></td><td style=text-align:left>刚刚被分配并且还没有被初始化</td></tr><tr><td><code>_Grunnable</code></td><td style=text-align:left>没有执行代码，没有栈的所有权，存储在运行队列中</td></tr><tr><td><code>_Grunning</code></td><td style=text-align:left>可以执行代码，拥有栈的所有权，被赋予了内核线程 M 和处理器 P</td></tr><tr><td><code>_Gsyscall</code></td><td style=text-align:left>正在执行系统调用，拥有栈的所有权，没有执行用户代码，被赋予了内核线程 M 但是不在运行队列上</td></tr><tr><td><code>_Gwaiting</code></td><td style=text-align:left>由于运行时而被阻塞，没有执行用户代码并且不在运行队列上，但是可能存在于 Channel 的等待队列上</td></tr><tr><td><code>_Gdead</code></td><td style=text-align:left>没有被使用，没有执行代码，可能有分配的栈</td></tr><tr><td><code>_Gcopystack</code></td><td style=text-align:left>栈正在被拷贝，没有执行代码，不在运行队列上</td></tr><tr><td><code>_Gpreempted</code></td><td style=text-align:left>由于抢占而被阻塞，没有执行用户代码并且不在运行队列上，等待唤醒</td></tr><tr><td><code>_Gscan</code></td><td style=text-align:left>GC 正在扫描栈空间，没有执行代码，可以与其他状态同时存在</td></tr></tbody></table><p>上述状态中比较常见是 <code>_Grunnable</code>、<code>_Grunning</code>、<code>_Gsyscall</code>、<code>_Gwaiting</code> 和 <code>_Gpreempted</code> 五个状态</p><p><img src=/images/Go%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86%E7%82%B9/GMP-1.png alt></p><p>​ 虽然 Goroutine 在运行时中定义的状态非常多而且复杂，但是可以将这些不同的状态聚合成三种：等待中、可运行、运行中，运行期间会在这三种状态来回切换：</p><ul><li>等待中：Goroutine 正在等待某些条件满足，例如：系统调用结束等，包括 <code>_Gwaiting</code>、<code>_Gsyscall</code> 和 <code>_Gpreempted</code> 几个状态；</li><li>可运行：Goroutine 已经准备就绪，可以在线程运行，如果当前程序中有非常多的 Goroutine，每个 Goroutine 就可能会等待更多的时间，即 <code>_Grunnable</code>；</li><li>运行中：Goroutine 正在某个线程上运行，即 <code>_Grunning</code>；</li></ul><h5 id=mmachine>M（Machine）</h5><p>​ M 是操作系统线程。调度器最多可以创建 10000 个线程，但是其中大多数的线程都不会执行用户代码（可能陷入系统调用），最多只会有 <code>GOMAXPROCS</code> 个活跃线程能够正常运行。</p><p>​ 在默认情况下，运行时会将 <code>GOMAXPROCS</code> 设置成当前机器的核数，我们也可以在程序中使用 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/debug.go#L16 target=_blank rel=noopener><code>runtime.GOMAXPROCS</code></a>
+来改变最大的活跃线程数。一个四核机器会创建四个活跃的操作系统线程，每一个线程都对应一个运行时中的 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/runtime2.go#L486 target=_blank rel=noopener><code>runtime.m</code></a>
+结构体。</p><p>​ 结构体 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/runtime2.go#L486 target=_blank rel=noopener><code>runtime.m</code></a>
+表示操作系统线程，这个结构体也包含了几十个字段，这里先来了解几个与 Goroutine 相关的字段：</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#a2f;font-weight:700>type</span> m <span style=color:#a2f;font-weight:700>struct</span> {
+</span></span><span style=display:flex><span>	g0   <span style=color:#666>*</span>g
+</span></span><span style=display:flex><span>	curg <span style=color:#666>*</span>g
+</span></span><span style=display:flex><span>	<span style=color:#666>...</span>
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><p>​ 其中 g0 是持有调度栈的 Goroutine，<code>curg</code> 是在当前线程上运行的用户 Goroutine，这也是操作系统线程唯一关心的两个 Goroutine。g0 是一个运行时中比较特殊的 Goroutine，它会深度参与运行时的调度过程，包括 Goroutine 的创建、大内存分配和 CGO 函数的执行。</p><h5 id=pprocessor>P（Processor）</h5><p>​ 调度器中的处理器 P 是线程和 Goroutine 的中间层，它能提供线程需要的上下文环境，也会负责调度线程上的等待队列，通过处理器 P 的调度，每一个内核线程都能够执行多个 Goroutine，它能在 Goroutine 进行一些 I/O 操作时及时让出计算资源，提高线程的利用率。</p><p>​ 因为调度器在启动时就会创建 <code>GOMAXPROCS</code> 个处理器，所以 Go 语言程序的处理器数量一定会等于 <code>GOMAXPROCS</code>，这些处理器会绑定到不同的内核线程上。</p><p><a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/runtime2.go#L576 target=_blank rel=noopener><code>runtime.p</code></a>
+是处理器的运行时表示，作为调度器的内部实现。<a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/runtime2.go#L576 target=_blank rel=noopener><code>runtime.p</code></a>
+结构体中的状态 <code>status</code> 字段会是以下五种中的一种：</p><table><thead><tr><th>状态</th><th>描述</th></tr></thead><tbody><tr><td><code>_Pidle</code></td><td>处理器没有运行用户代码或者调度器，被空闲队列或者改变其状态的结构持有，运行队列为空</td></tr><tr><td><code>_Prunning</code></td><td>被线程 M 持有，并且正在执行用户代码或者调度器</td></tr><tr><td><code>_Psyscall</code></td><td>没有执行用户代码，当前线程陷入系统调用</td></tr><tr><td><code>_Pgcstop</code></td><td>被线程 M 持有，当前处理器由于垃圾回收被停止</td></tr><tr><td><code>_Pdead</code></td><td>当前处理器已经不被使用</td></tr></tbody></table><p>M 必须拥有 P 才可以执行 G 中的代码，P 含有一个包含多个 G 的队列，P 可以调度 G 交由 M 执行。</p><h4 id=goroutine-调度策略>Goroutine 调度策略</h4><ul><li>队列轮转：P 会周期性的将 G 调度到 M 中执行，执行一段时间后，保存上下文，将 G 放到队列尾部，然后从队列中再取出一个 G 进行调度。除此之外，P 还会周期性的查看全局队列是否有 G 等待调度到 M 中执行。</li><li>系统调用：当 G0 即将进入系统调用时，M0 将释放 P，进而某个空闲的 M1 获取 P，继续执行 P 队列中剩下的 G。M1 的来源有可能是 M 的缓存池，也可能是新建的。</li><li>当 G0 系统调用结束后，如果有空闲的 P，则获取一个 P，继续执行 G0。如果没有，则将 G0 放入全局队列，等待被其他的 P 调度。然后 M0 将进入缓存池睡眠。</li></ul><p><img src=/images/Go%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86%E7%82%B9/GMP-2.png alt></p><h3 id=channel>Channel</h3><p><img src=/images/Go%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86%E7%82%B9/chan-1.png alt></p><p>​ 虽然在 Go 语言中也能使用共享内存加互斥锁进行通信，但是 Go 语言提供了一种不同的并发模型，即通信顺序进程（Communicating sequential processes，CSP）<a href=https://draveness.me/golang/docs/part3-runtime/ch06-concurrency/golang-channel/#fn:1 target=_blank rel=noopener>1</a>
+。Goroutine 和 Channel 分别对应 CSP 中的实体和传递信息的媒介，Goroutine 之间会通过 Channel 传递数据</p><p>​ Channel 在运行时使用 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/chan.go#L32 target=_blank rel=noopener><code>runtime.hchan</code></a>
+结构体表示。我们在 Go 语言中创建新的 Channel 时，实际上创建的都是如下所示的结构：</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#a2f;font-weight:700>type</span> hchan <span style=color:#a2f;font-weight:700>struct</span> {
+</span></span><span style=display:flex><span>	qcount   <span style=color:#0b0;font-weight:700>uint</span>
+</span></span><span style=display:flex><span>	dataqsiz <span style=color:#0b0;font-weight:700>uint</span>
+</span></span><span style=display:flex><span>	buf      unsafe.Pointer
+</span></span><span style=display:flex><span>	elemsize <span style=color:#0b0;font-weight:700>uint16</span>
+</span></span><span style=display:flex><span>	closed   <span style=color:#0b0;font-weight:700>uint32</span>
+</span></span><span style=display:flex><span>	elemtype <span style=color:#666>*</span>_type
+</span></span><span style=display:flex><span>	sendx    <span style=color:#0b0;font-weight:700>uint</span>
+</span></span><span style=display:flex><span>	recvx    <span style=color:#0b0;font-weight:700>uint</span>
+</span></span><span style=display:flex><span>	recvq    waitq
+</span></span><span style=display:flex><span>	sendq    waitq
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	lock mutex
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><p><a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/chan.go#L32 target=_blank rel=noopener><code>runtime.hchan</code></a>
+结构体中的五个字段 <code>qcount</code>、<code>dataqsiz</code>、<code>buf</code>、<code>sendx</code>、<code>recv</code> 构建底层的循环队列：</p><ul><li><code>qcount</code> — Channel 中的元素个数；</li><li><code>dataqsiz</code> — Channel 中的循环队列的长度；</li><li><code>buf</code> — Channel 的缓冲区数据指针；</li><li><code>sendx</code> — Channel 的发送操作处理到的位置；</li><li><code>recvx</code> — Channel 的接收操作处理到的位置；</li></ul><p>除此之外，<code>elemsize</code> 和 <code>elemtype</code> 分别表示当前 Channel 能够收发的元素类型和大小；<code>sendq</code> 和 <code>recvq</code> 存储了当前 Channel 由于缓冲区空间不足而阻塞的 Goroutine 列表，这些等待队列使用双向链表 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/chan.go#L53 target=_blank rel=noopener><code>runtime.waitq</code></a>
+表示，链表中所有的元素都是 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/runtime2.go#L345 target=_blank rel=noopener><code>runtime.sudog</code></a>
+结构：</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#a2f;font-weight:700>type</span> waitq <span style=color:#a2f;font-weight:700>struct</span> {
+</span></span><span style=display:flex><span>	first <span style=color:#666>*</span>sudog
+</span></span><span style=display:flex><span>	last  <span style=color:#666>*</span>sudog
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><p><a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/runtime2.go#L345 target=_blank rel=noopener><code>runtime.sudog</code></a>
+表示一个在等待列表中的 Goroutine，该结构中存储了两个分别指向前后 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/runtime2.go#L345 target=_blank rel=noopener><code>runtime.sudog</code></a>
+的指针以构成链表。</p><h4 id=发送数据>发送数据</h4><p>在发送数据的逻辑（ <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/chan.go#L158 target=_blank rel=noopener><code>runtime.chansend</code></a>
+函数实现）执行之前会先为当前 Channel 加锁，防止多个线程并发修改数据。</p><h5 id=过程>过程</h5><ol><li>当存在等待的接收者时，通过 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/chan.go#L292 target=_blank rel=noopener><code>runtime.send</code></a>
+直接将数据发送给阻塞的接收者；</li><li>当缓冲区存在空余空间时，将发送的数据写入 Channel 的缓冲区；</li><li>当不存在缓冲区或者缓冲区已满时，等待其他 Goroutine 从 Channel 接收数据；</li></ol><h5 id=直接发送>直接发送</h5><p>如果目标 Channel 没有被关闭并且已经有处于读等待的 Goroutine，那么 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/chan.go#L158 target=_blank rel=noopener><code>runtime.chansend</code></a>
+会从接收队列 <code>recvq</code> 中取出最先陷入等待的 Goroutine 并直接向它发送数据：</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span>	<span style=color:#a2f;font-weight:700>if</span> sg <span style=color:#666>:=</span> c.recvq.<span style=color:#00a000>dequeue</span>(); sg <span style=color:#666>!=</span> <span style=color:#a2f;font-weight:700>nil</span> {
+</span></span><span style=display:flex><span>        <span style=color:#080;font-style:italic>// Found a waiting receiver. We pass the value we want to send
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>		<span style=color:#080;font-style:italic>// directly to the receiver, bypassing the channel buffer (if any).
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>		<span style=color:#00a000>send</span>(c, sg, ep, <span style=color:#a2f;font-weight:700>func</span>() { <span style=color:#00a000>unlock</span>(<span style=color:#666>&amp;</span>c.lock) }, <span style=color:#666>3</span>)
+</span></span><span style=display:flex><span>		<span style=color:#a2f;font-weight:700>return</span> <span style=color:#a2f;font-weight:700>true</span>
+</span></span><span style=display:flex><span>	}
+</span></span></code></pre></div><p>发送数据时会调用 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/chan.go#L292 target=_blank rel=noopener><code>runtime.send</code></a>
+，该函数的执行可以分成两个部分：</p><ol><li>调用 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/chan.go#L333 target=_blank rel=noopener><code>runtime.sendDirect</code></a>
+将发送的数据直接拷贝到 <code>x = &lt;-c</code> 表达式中变量 <code>x</code> 所在的内存地址上；</li><li>调用 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/proc.go#L345 target=_blank rel=noopener><code>runtime.goready</code></a>
+将等待接收数据的 Goroutine 标记成可运行状态 <code>Grunnable</code> 并把该 Goroutine 放到发送方所在的处理器的 <code>runnext</code> 上等待执行，该处理器在下一次调度时会立刻唤醒数据的接收方；</li></ol><h5 id=缓冲区buf>缓冲区buf</h5><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>chansend</span>(c <span style=color:#666>*</span>hchan, ep unsafe.Pointer, block <span style=color:#0b0;font-weight:700>bool</span>, callerpc <span style=color:#0b0;font-weight:700>uintptr</span>) <span style=color:#0b0;font-weight:700>bool</span> {
+</span></span><span style=display:flex><span>	<span style=color:#666>...</span>
+</span></span><span style=display:flex><span>	<span style=color:#a2f;font-weight:700>if</span> c.qcount &lt; c.dataqsiz {
+</span></span><span style=display:flex><span>		<span style=color:#080;font-style:italic>// Space is available in the channel buffer. Enqueue the element to send.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>		qp <span style=color:#666>:=</span> <span style=color:#00a000>chanbuf</span>(c, c.sendx)
+</span></span><span style=display:flex><span>		<span style=color:#a2f;font-weight:700>if</span> raceenabled {
+</span></span><span style=display:flex><span>			<span style=color:#00a000>racenotify</span>(c, c.sendx, <span style=color:#a2f;font-weight:700>nil</span>)
+</span></span><span style=display:flex><span>		}
+</span></span><span style=display:flex><span>		<span style=color:#00a000>typedmemmove</span>(c.elemtype, qp, ep)
+</span></span><span style=display:flex><span>		c.sendx<span style=color:#666>++</span>
+</span></span><span style=display:flex><span>		<span style=color:#a2f;font-weight:700>if</span> c.sendx <span style=color:#666>==</span> c.dataqsiz {
+</span></span><span style=display:flex><span>			c.sendx = <span style=color:#666>0</span>
+</span></span><span style=display:flex><span>		}
+</span></span><span style=display:flex><span>		c.qcount<span style=color:#666>++</span>
+</span></span><span style=display:flex><span>		<span style=color:#00a000>unlock</span>(<span style=color:#666>&amp;</span>c.lock)
+</span></span><span style=display:flex><span>		<span style=color:#a2f;font-weight:700>return</span> <span style=color:#a2f;font-weight:700>true</span>
+</span></span><span style=display:flex><span>	}
+</span></span><span style=display:flex><span>	<span style=color:#666>...</span>
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><p>​ 如果当前 Channel 的缓冲区未满，向 Channel 发送的数据会存储在 Channel 的 <code>sendx</code> 索引所在的位置并将 <code>sendx</code> 索引加一。因为这里的 <code>buf</code> 是一个循环数组，所以当 <code>sendx</code> 等于 <code>dataqsiz</code> 时会重新回到数组开始的位置。</p><h5 id=阻塞发送>阻塞发送</h5><p>当 Channel 没有接收者能够处理数据时，向 Channel 发送数据会被下游阻塞，当然使用 <code>select</code> 关键字可以向 Channel 非阻塞地发送消息。向 Channel 阻塞地发送数据会执行下面的代码，我们可以简单梳理一下这段代码的逻辑：</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>chansend</span>(c <span style=color:#666>*</span>hchan, ep unsafe.Pointer, block <span style=color:#0b0;font-weight:700>bool</span>, callerpc <span style=color:#0b0;font-weight:700>uintptr</span>) <span style=color:#0b0;font-weight:700>bool</span> {
+</span></span><span style=display:flex><span>	<span style=color:#666>...</span>
+</span></span><span style=display:flex><span>	<span style=color:#a2f;font-weight:700>if</span> !block {
+</span></span><span style=display:flex><span>		<span style=color:#00a000>unlock</span>(<span style=color:#666>&amp;</span>c.lock)
+</span></span><span style=display:flex><span>		<span style=color:#a2f;font-weight:700>return</span> <span style=color:#a2f;font-weight:700>false</span>
+</span></span><span style=display:flex><span>	}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// Block on the channel. Some receiver will complete our operation for us.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	gp <span style=color:#666>:=</span> <span style=color:#00a000>getg</span>()
+</span></span><span style=display:flex><span>	mysg <span style=color:#666>:=</span> <span style=color:#00a000>acquireSudog</span>()
+</span></span><span style=display:flex><span>	mysg.releasetime = <span style=color:#666>0</span>
+</span></span><span style=display:flex><span>	<span style=color:#a2f;font-weight:700>if</span> t0 <span style=color:#666>!=</span> <span style=color:#666>0</span> {
+</span></span><span style=display:flex><span>		mysg.releasetime = <span style=color:#666>-</span><span style=color:#666>1</span>
+</span></span><span style=display:flex><span>	}
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// No stack splits between assigning elem and enqueuing mysg
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#080;font-style:italic>// on gp.waiting where copystack can find it.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	mysg.elem = ep
+</span></span><span style=display:flex><span>	mysg.waitlink = <span style=color:#a2f;font-weight:700>nil</span>
+</span></span><span style=display:flex><span>	mysg.g = gp
+</span></span><span style=display:flex><span>	mysg.isSelect = <span style=color:#a2f;font-weight:700>false</span>
+</span></span><span style=display:flex><span>	mysg.c = c
+</span></span><span style=display:flex><span>	gp.waiting = mysg
+</span></span><span style=display:flex><span>	gp.param = <span style=color:#a2f;font-weight:700>nil</span>
+</span></span><span style=display:flex><span>	c.sendq.<span style=color:#00a000>enqueue</span>(mysg)
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// Signal to anyone trying to shrink our stack that we&#39;re about
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#080;font-style:italic>// to park on a channel. The window between when this G&#39;s status
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#080;font-style:italic>// changes and when we set gp.activeStackChans is not safe for
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#080;font-style:italic>// stack shrinking.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	atomic.<span style=color:#00a000>Store8</span>(<span style=color:#666>&amp;</span>gp.parkingOnChan, <span style=color:#666>1</span>)
+</span></span><span style=display:flex><span>	
+</span></span><span style=display:flex><span>    <span style=color:#00a000>gopark</span>(chanparkcommit, unsafe.<span style=color:#00a000>Pointer</span>(<span style=color:#666>&amp;</span>c.lock), waitReasonChanSend, traceEvGoBlockSend, <span style=color:#666>2</span>)
+</span></span><span style=display:flex><span>    <span style=color:#080;font-style:italic>//goparkunlock(&amp;c.lock, waitReasonChanSend, traceEvGoBlockSend, 3)
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	
+</span></span><span style=display:flex><span>    <span style=color:#080;font-style:italic>// Ensure the value being sent is kept alive until the
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#080;font-style:italic>// receiver copies it out. The sudog has a pointer to the
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#080;font-style:italic>// stack object, but sudogs aren&#39;t considered as roots of the
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#080;font-style:italic>// stack tracer.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>KeepAlive</span>(ep)
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// someone woke us up.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#a2f;font-weight:700>if</span> mysg <span style=color:#666>!=</span> gp.waiting {
+</span></span><span style=display:flex><span>		<span style=color:#00a000>throw</span>(<span style=color:#b44>&#34;G waiting list is corrupted&#34;</span>)
+</span></span><span style=display:flex><span>	}
+</span></span><span style=display:flex><span>	gp.waiting = <span style=color:#a2f;font-weight:700>nil</span>
+</span></span><span style=display:flex><span>	gp.activeStackChans = <span style=color:#a2f;font-weight:700>false</span>
+</span></span><span style=display:flex><span>	closed <span style=color:#666>:=</span> !mysg.success
+</span></span><span style=display:flex><span>	gp.param = <span style=color:#a2f;font-weight:700>nil</span>
+</span></span><span style=display:flex><span>	<span style=color:#a2f;font-weight:700>if</span> mysg.releasetime &gt; <span style=color:#666>0</span> {
+</span></span><span style=display:flex><span>		<span style=color:#00a000>blockevent</span>(mysg.releasetime<span style=color:#666>-</span>t0, <span style=color:#666>2</span>)
+</span></span><span style=display:flex><span>	}
+</span></span><span style=display:flex><span>	mysg.c = <span style=color:#a2f;font-weight:700>nil</span>
+</span></span><span style=display:flex><span>	<span style=color:#00a000>releaseSudog</span>(mysg)
+</span></span><span style=display:flex><span>	<span style=color:#a2f;font-weight:700>if</span> closed {
+</span></span><span style=display:flex><span>		<span style=color:#a2f;font-weight:700>if</span> c.closed <span style=color:#666>==</span> <span style=color:#666>0</span> {
+</span></span><span style=display:flex><span>			<span style=color:#00a000>throw</span>(<span style=color:#b44>&#34;chansend: spurious wakeup&#34;</span>)
+</span></span><span style=display:flex><span>		}
+</span></span><span style=display:flex><span>		<span style=color:#a2f>panic</span>(<span style=color:#00a000>plainError</span>(<span style=color:#b44>&#34;send on closed channel&#34;</span>))
+</span></span><span style=display:flex><span>	}
+</span></span><span style=display:flex><span>	<span style=color:#a2f;font-weight:700>return</span> <span style=color:#a2f;font-weight:700>true</span>
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><ol><li>调用 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/stubs.go#L18 target=_blank rel=noopener><code>runtime.getg</code></a>
+获取发送数据使用的 Goroutine；</li><li>执行 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/proc.go#L352 target=_blank rel=noopener><code>runtime.acquireSudog</code></a>
+获取 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/runtime2.go#L345 target=_blank rel=noopener><code>runtime.sudog</code></a>
+结构并设置这一次阻塞发送的相关信息，例如发送的 Channel、是否在 select 中和待发送数据的内存地址等；</li><li>将刚刚创建并初始化的 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/runtime2.go#L345 target=_blank rel=noopener><code>runtime.sudog</code></a>
+加入发送等待队列，并设置到当前 Goroutine 的 <code>waiting</code> 上，表示 Goroutine 正在等待该 <code>sudog</code> 准备就绪；</li><li>调用 <code>runtime.gopark</code>将当前的 Goroutine 陷入沉睡等待唤醒；</li><li>被调度器唤醒后会执行一些收尾工作，将一些属性置零并且释放 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/runtime2.go#L345 target=_blank rel=noopener><code>runtime.sudog</code></a>
+结构体；</li></ol><h4 id=接受数据>接受数据</h4><p>Go 语言中可以使用两种不同的方式去接收 Channel 中的数据：</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span>i <span style=color:#666>&lt;-</span> ch
+</span></span><span style=display:flex><span>i, ok <span style=color:#666>&lt;-</span> ch
+</span></span></code></pre></div><p>这两种不同的方法经过编译器的处理会被转换成 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/chan.go#L438 target=_blank rel=noopener><code>runtime.chanrecv1</code></a>
+和 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/chan.go#L443 target=_blank rel=noopener><code>runtime.chanrecv2</code></a>
+两种不同函数的调用，但是这两个函数最终还是会调用 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/chan.go#L454 target=_blank rel=noopener><code>runtime.chanrecv</code></a>
+。</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-fallback data-lang=fallback><span style=display:flex><span>// entry points for &lt;- c from compiled code
+</span></span><span style=display:flex><span>//go:nosplit
+</span></span><span style=display:flex><span>func chanrecv1(c *hchan, elem unsafe.Pointer) {
+</span></span><span style=display:flex><span>   chanrecv(c, elem, true)
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>//go:nosplit
+</span></span><span style=display:flex><span>func chanrecv2(c *hchan, elem unsafe.Pointer) (received bool) {
+</span></span><span style=display:flex><span>   _, received = chanrecv(c, elem, true)
+</span></span><span style=display:flex><span>   return
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><p>当我们从一个空 Channel 接收数据时会直接调用 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/proc.go#L319 target=_blank rel=noopener><code>runtime.gopark</code></a>
+让出处理器的使用权。</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>chanrecv</span>(c <span style=color:#666>*</span>hchan, ep unsafe.Pointer, block <span style=color:#0b0;font-weight:700>bool</span>) (selected, received <span style=color:#0b0;font-weight:700>bool</span>) {
+</span></span><span style=display:flex><span>	<span style=color:#a2f;font-weight:700>if</span> c <span style=color:#666>==</span> <span style=color:#a2f;font-weight:700>nil</span> {
+</span></span><span style=display:flex><span>		<span style=color:#a2f;font-weight:700>if</span> !block {
+</span></span><span style=display:flex><span>			<span style=color:#a2f;font-weight:700>return</span>
+</span></span><span style=display:flex><span>		}
+</span></span><span style=display:flex><span>		<span style=color:#00a000>gopark</span>(<span style=color:#a2f;font-weight:700>nil</span>, <span style=color:#a2f;font-weight:700>nil</span>, waitReasonChanReceiveNilChan, traceEvGoStop, <span style=color:#666>2</span>)
+</span></span><span style=display:flex><span>		<span style=color:#00a000>throw</span>(<span style=color:#b44>&#34;unreachable&#34;</span>)
+</span></span><span style=display:flex><span>	}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#00a000>lock</span>(<span style=color:#666>&amp;</span>c.lock)
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#a2f;font-weight:700>if</span> c.closed <span style=color:#666>!=</span> <span style=color:#666>0</span> <span style=color:#666>&amp;&amp;</span> c.qcount <span style=color:#666>==</span> <span style=color:#666>0</span> {
+</span></span><span style=display:flex><span>		<span style=color:#00a000>unlock</span>(<span style=color:#666>&amp;</span>c.lock)
+</span></span><span style=display:flex><span>		<span style=color:#a2f;font-weight:700>if</span> ep <span style=color:#666>!=</span> <span style=color:#a2f;font-weight:700>nil</span> {
+</span></span><span style=display:flex><span>			<span style=color:#00a000>typedmemclr</span>(c.elemtype, ep)
+</span></span><span style=display:flex><span>		}
+</span></span><span style=display:flex><span>		<span style=color:#a2f;font-weight:700>return</span> <span style=color:#a2f;font-weight:700>true</span>, <span style=color:#a2f;font-weight:700>false</span>
+</span></span><span style=display:flex><span>	}
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><p>如果当前 Channel 已经被关闭并且缓冲区中不存在任何数据，那么会清除 <code>ep</code> 指针中的数据并立刻返回。</p><p>除了上述两种特殊情况，使用 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/chan.go#L454 target=_blank rel=noopener><code>runtime.chanrecv</code></a>
+从 Channel 接收数据时还包含以下三种不同情况：</p><ul><li>当存在等待的发送者时，通过 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/chan.go#L607 target=_blank rel=noopener><code>runtime.recv</code></a>
+从阻塞的发送者或者缓冲区中获取数据；</li><li>当缓冲区存在数据时，从 Channel 的缓冲区中接收数据；</li><li>当缓冲区中不存在数据时，等待其他 Goroutine 向 Channel 发送数据；</li></ul><h5 id=直接接收>直接接收</h5><p>​ 当 Channel 的 <code>sendq</code> 队列中包含处于等待状态的 Goroutine 时，该函数会取出队列头等待的 Goroutine，处理的逻辑和发送时相差无几，只是发送数据时调用的是 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/chan.go#L292 target=_blank rel=noopener><code>runtime.send</code></a>
+函数，而接收数据时使用 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/chan.go#L607 target=_blank rel=noopener><code>runtime.recv</code></a>
+：</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#a2f;font-weight:700>if</span> sg <span style=color:#666>:=</span> c.sendq.<span style=color:#00a000>dequeue</span>(); sg <span style=color:#666>!=</span> <span style=color:#a2f;font-weight:700>nil</span> {
+</span></span><span style=display:flex><span>   <span style=color:#080;font-style:italic>// Found a waiting sender. If buffer is size 0, receive value
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   <span style=color:#080;font-style:italic>// directly from sender. Otherwise, receive from head of queue
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   <span style=color:#080;font-style:italic>// and add sender&#39;s value to the tail of the queue (both map to
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   <span style=color:#080;font-style:italic>// the same buffer slot because the queue is full).
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   <span style=color:#00a000>recv</span>(c, sg, ep, <span style=color:#a2f;font-weight:700>func</span>() { <span style=color:#00a000>unlock</span>(<span style=color:#666>&amp;</span>c.lock) }, <span style=color:#666>3</span>)
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>return</span> <span style=color:#a2f;font-weight:700>true</span>, <span style=color:#a2f;font-weight:700>true</span>
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><p>runtime.recv：</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#080;font-style:italic>// recv processes a receive operation on a full channel c.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// There are 2 parts:
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// 1) The value sent by the sender sg is put into the channel
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>//    and the sender is woken up to go on its merry way.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// 2) The value received by the receiver (the current G) is
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>//    written to ep.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// For synchronous channels, both values are the same.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// For asynchronous channels, the receiver gets its data from
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// the channel buffer and the sender&#39;s data is put in the
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// channel buffer.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// Channel c must be full and locked. recv unlocks c with unlockf.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// sg must already be dequeued from c.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// A non-nil ep must point to the heap or the caller&#39;s stack.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>recv</span>(c <span style=color:#666>*</span>hchan, sg <span style=color:#666>*</span>sudog, ep unsafe.Pointer, unlockf <span style=color:#a2f;font-weight:700>func</span>(), skip <span style=color:#0b0;font-weight:700>int</span>) {
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> c.dataqsiz <span style=color:#666>==</span> <span style=color:#666>0</span> {
+</span></span><span style=display:flex><span>      <span style=color:#a2f;font-weight:700>if</span> raceenabled {
+</span></span><span style=display:flex><span>         <span style=color:#00a000>racesync</span>(c, sg)
+</span></span><span style=display:flex><span>      }
+</span></span><span style=display:flex><span>      <span style=color:#a2f;font-weight:700>if</span> ep <span style=color:#666>!=</span> <span style=color:#a2f;font-weight:700>nil</span> {
+</span></span><span style=display:flex><span>         <span style=color:#080;font-style:italic>// copy data from sender
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>         <span style=color:#00a000>recvDirect</span>(c.elemtype, sg, ep)
+</span></span><span style=display:flex><span>      }
+</span></span><span style=display:flex><span>   } <span style=color:#a2f;font-weight:700>else</span> {
+</span></span><span style=display:flex><span>      <span style=color:#080;font-style:italic>// Queue is full. Take the item at the
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>      <span style=color:#080;font-style:italic>// head of the queue. Make the sender enqueue
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>      <span style=color:#080;font-style:italic>// its item at the tail of the queue. Since the
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>      <span style=color:#080;font-style:italic>// queue is full, those are both the same slot.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>      qp <span style=color:#666>:=</span> <span style=color:#00a000>chanbuf</span>(c, c.recvx)
+</span></span><span style=display:flex><span>      <span style=color:#a2f;font-weight:700>if</span> raceenabled {
+</span></span><span style=display:flex><span>         <span style=color:#00a000>racenotify</span>(c, c.recvx, <span style=color:#a2f;font-weight:700>nil</span>)
+</span></span><span style=display:flex><span>         <span style=color:#00a000>racenotify</span>(c, c.recvx, sg)
+</span></span><span style=display:flex><span>      }
+</span></span><span style=display:flex><span>      <span style=color:#080;font-style:italic>// copy data from queue to receiver
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>      <span style=color:#a2f;font-weight:700>if</span> ep <span style=color:#666>!=</span> <span style=color:#a2f;font-weight:700>nil</span> {
+</span></span><span style=display:flex><span>         <span style=color:#00a000>typedmemmove</span>(c.elemtype, ep, qp)
+</span></span><span style=display:flex><span>      }
+</span></span><span style=display:flex><span>      <span style=color:#080;font-style:italic>// copy data from sender to queue
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>      <span style=color:#00a000>typedmemmove</span>(c.elemtype, qp, sg.elem)
+</span></span><span style=display:flex><span>      c.recvx<span style=color:#666>++</span>
+</span></span><span style=display:flex><span>      <span style=color:#a2f;font-weight:700>if</span> c.recvx <span style=color:#666>==</span> c.dataqsiz {
+</span></span><span style=display:flex><span>         c.recvx = <span style=color:#666>0</span>
+</span></span><span style=display:flex><span>      }
+</span></span><span style=display:flex><span>      c.sendx = c.recvx <span style=color:#080;font-style:italic>// c.sendx = (c.sendx+1) % c.dataqsiz
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   }
+</span></span><span style=display:flex><span>   sg.elem = <span style=color:#a2f;font-weight:700>nil</span>
+</span></span><span style=display:flex><span>   gp <span style=color:#666>:=</span> sg.g
+</span></span><span style=display:flex><span>   <span style=color:#00a000>unlockf</span>()
+</span></span><span style=display:flex><span>   gp.param = unsafe.<span style=color:#00a000>Pointer</span>(sg)
+</span></span><span style=display:flex><span>   sg.success = <span style=color:#a2f;font-weight:700>true</span>
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> sg.releasetime <span style=color:#666>!=</span> <span style=color:#666>0</span> {
+</span></span><span style=display:flex><span>      sg.releasetime = <span style=color:#00a000>cputicks</span>()
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   <span style=color:#00a000>goready</span>(gp, skip<span style=color:#666>+</span><span style=color:#666>1</span>)
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><p>recv函数会根据缓冲区的大小分别处理不同的情况：</p><ul><li>如果 Channel 不存在缓冲区（dataqsiz = 0）；<ol><li>调用 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/chan.go#L346 target=_blank rel=noopener><code>runtime.recvDirect</code></a>
+将 Channel 发送队列中 Goroutine 存储的 <code>elem</code> 数据拷贝到目标内存地址中；</li></ol></li><li>如果 Channel 存在缓冲区（dataqsiz != 0）；<ol><li>将队列中的数据拷贝到接收方的内存地址；</li><li>将发送队列头的数据拷贝到缓冲区中，释放一个阻塞的发送方；</li></ol></li></ul><p>无论发生哪种情况，运行时都会调用 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/proc.go#L345 target=_blank rel=noopener><code>runtime.goready</code></a>
+将当前处理器的 <code>runnext</code> 设置成发送数据的 Goroutine，在调度器下一次调度时将阻塞的发送方唤醒。</p><h5 id=缓冲区>缓冲区</h5><p>​ 当 Channel 的缓冲区中已经包含数据时，从 Channel 中接收数据会直接从缓冲区中 <code>recvx</code> 的索引位置中取出数据进行处理：</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#a2f;font-weight:700>if</span> c.qcount &gt; <span style=color:#666>0</span> {
+</span></span><span style=display:flex><span>   <span style=color:#080;font-style:italic>// Receive directly from queue
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   qp <span style=color:#666>:=</span> <span style=color:#00a000>chanbuf</span>(c, c.recvx)
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> raceenabled {
+</span></span><span style=display:flex><span>      <span style=color:#00a000>racenotify</span>(c, c.recvx, <span style=color:#a2f;font-weight:700>nil</span>)
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> ep <span style=color:#666>!=</span> <span style=color:#a2f;font-weight:700>nil</span> {
+</span></span><span style=display:flex><span>      <span style=color:#00a000>typedmemmove</span>(c.elemtype, ep, qp)
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   <span style=color:#00a000>typedmemclr</span>(c.elemtype, qp)
+</span></span><span style=display:flex><span>   c.recvx<span style=color:#666>++</span>
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> c.recvx <span style=color:#666>==</span> c.dataqsiz {
+</span></span><span style=display:flex><span>      c.recvx = <span style=color:#666>0</span>
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   c.qcount<span style=color:#666>--</span>
+</span></span><span style=display:flex><span>   <span style=color:#00a000>unlock</span>(<span style=color:#666>&amp;</span>c.lock)
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>return</span> <span style=color:#a2f;font-weight:700>true</span>, <span style=color:#a2f;font-weight:700>true</span>
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><h5 id=阻塞接收>阻塞接收</h5><p>​ 当 Channel 的发送队列中不存在等待的 Goroutine 并且缓冲区中也不存在任何数据时，从管道中接收数据的操作会变成阻塞的，然而不是所有的接收操作都是阻塞的，与 <code>select</code> 语句结合使用时就可能会使用到非阻塞的接收操作：</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>chanrecv</span>(c <span style=color:#666>*</span>hchan, ep unsafe.Pointer, block <span style=color:#0b0;font-weight:700>bool</span>) (selected, received <span style=color:#0b0;font-weight:700>bool</span>) {
+</span></span><span style=display:flex><span>	<span style=color:#666>...</span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>if</span> !block {
+</span></span><span style=display:flex><span>		<span style=color:#00a000>unlock</span>(<span style=color:#666>&amp;</span>c.lock)
+</span></span><span style=display:flex><span>		<span style=color:#a2f;font-weight:700>return</span> <span style=color:#a2f;font-weight:700>false</span>, <span style=color:#a2f;font-weight:700>false</span>
+</span></span><span style=display:flex><span>	}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// no sender available: block on this channel.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	gp <span style=color:#666>:=</span> <span style=color:#00a000>getg</span>()
+</span></span><span style=display:flex><span>	mysg <span style=color:#666>:=</span> <span style=color:#00a000>acquireSudog</span>()
+</span></span><span style=display:flex><span>	mysg.releasetime = <span style=color:#666>0</span>
+</span></span><span style=display:flex><span>	<span style=color:#a2f;font-weight:700>if</span> t0 <span style=color:#666>!=</span> <span style=color:#666>0</span> {
+</span></span><span style=display:flex><span>		mysg.releasetime = <span style=color:#666>-</span><span style=color:#666>1</span>
+</span></span><span style=display:flex><span>	}
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// No stack splits between assigning elem and enqueuing mysg
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#080;font-style:italic>// on gp.waiting where copystack can find it.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	mysg.elem = ep
+</span></span><span style=display:flex><span>	mysg.waitlink = <span style=color:#a2f;font-weight:700>nil</span>
+</span></span><span style=display:flex><span>	gp.waiting = mysg
+</span></span><span style=display:flex><span>	mysg.g = gp
+</span></span><span style=display:flex><span>	mysg.isSelect = <span style=color:#a2f;font-weight:700>false</span>
+</span></span><span style=display:flex><span>	mysg.c = c
+</span></span><span style=display:flex><span>	gp.param = <span style=color:#a2f;font-weight:700>nil</span>
+</span></span><span style=display:flex><span>	c.recvq.<span style=color:#00a000>enqueue</span>(mysg)
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// Signal to anyone trying to shrink our stack that we&#39;re about
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#080;font-style:italic>// to park on a channel. The window between when this G&#39;s status
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#080;font-style:italic>// changes and when we set gp.activeStackChans is not safe for
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#080;font-style:italic>// stack shrinking.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	atomic.<span style=color:#00a000>Store8</span>(<span style=color:#666>&amp;</span>gp.parkingOnChan, <span style=color:#666>1</span>)
+</span></span><span style=display:flex><span>	<span style=color:#00a000>gopark</span>(chanparkcommit, unsafe.<span style=color:#00a000>Pointer</span>(<span style=color:#666>&amp;</span>c.lock), waitReasonChanReceive, traceEvGoBlockRecv, <span style=color:#666>2</span>)
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// someone woke us up
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#a2f;font-weight:700>if</span> mysg <span style=color:#666>!=</span> gp.waiting {
+</span></span><span style=display:flex><span>		<span style=color:#00a000>throw</span>(<span style=color:#b44>&#34;G waiting list is corrupted&#34;</span>)
+</span></span><span style=display:flex><span>	}
+</span></span><span style=display:flex><span>	gp.waiting = <span style=color:#a2f;font-weight:700>nil</span>
+</span></span><span style=display:flex><span>	gp.activeStackChans = <span style=color:#a2f;font-weight:700>false</span>
+</span></span><span style=display:flex><span>	<span style=color:#a2f;font-weight:700>if</span> mysg.releasetime &gt; <span style=color:#666>0</span> {
+</span></span><span style=display:flex><span>		<span style=color:#00a000>blockevent</span>(mysg.releasetime<span style=color:#666>-</span>t0, <span style=color:#666>2</span>)
+</span></span><span style=display:flex><span>	}
+</span></span><span style=display:flex><span>	success <span style=color:#666>:=</span> mysg.success
+</span></span><span style=display:flex><span>	gp.param = <span style=color:#a2f;font-weight:700>nil</span>
+</span></span><span style=display:flex><span>	mysg.c = <span style=color:#a2f;font-weight:700>nil</span>
+</span></span><span style=display:flex><span>	<span style=color:#00a000>releaseSudog</span>(mysg)
+</span></span><span style=display:flex><span>	<span style=color:#a2f;font-weight:700>return</span> <span style=color:#a2f;font-weight:700>true</span>, success
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><h3 id=context>Context</h3><p>​ 上下文 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/context/context.go#L62 target=_blank rel=noopener><code>context.Context</code></a>
+Go 语言中用来设置截止日期、同步信号，传递请求相关值的结构体。Context 只定义了接口，凡是实现该接口的类都可称为是一种 context</p><p>​ <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/context/context.go#L62 target=_blank rel=noopener><code>context.Context</code></a>
+接口定义了四个需要实现的方法，其中包括：</p><ol><li><code>Deadline</code> — 返回 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/context/context.go#L62 target=_blank rel=noopener><code>context.Context</code></a>
+被取消的时间，也就是完成工作的截止日期；</li><li><code>Done</code> — 返回一个 Channel，这个 Channel 会在当前工作完成或者上下文被取消后关闭，多次调用 <code>Done</code> 方法会返回同一个 Channel；</li><li><code>Err</code> — 返回 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/context/context.go#L62 target=_blank rel=noopener><code>context.Context</code></a>
+结束的原因，它只会在 <code>Done</code> 方法对应的 Channel 关闭时返回非空的值；<ol><li>如果 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/context/context.go#L62 target=_blank rel=noopener><code>context.Context</code></a>
+被取消，会返回 <code>Canceled</code> 错误；</li><li>如果 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/context/context.go#L62 target=_blank rel=noopener><code>context.Context</code></a>
+超时，会返回 <code>DeadlineExceeded</code> 错误；</li></ol></li><li><code>Value</code> — 从 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/context/context.go#L62 target=_blank rel=noopener><code>context.Context</code></a>
+中获取键对应的值，对于同一个上下文来说，多次调用 <code>Value</code> 并传入相同的 <code>Key</code> 会返回相同的结果，该方法可以用来传递请求特定的数据；</li></ol><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#a2f;font-weight:700>type</span> Context <span style=color:#a2f;font-weight:700>interface</span> {
+</span></span><span style=display:flex><span>	<span style=color:#00a000>Deadline</span>() (deadline time.Time, ok <span style=color:#0b0;font-weight:700>bool</span>)
+</span></span><span style=display:flex><span>	<span style=color:#00a000>Done</span>() <span style=color:#666>&lt;-</span><span style=color:#a2f;font-weight:700>chan</span> <span style=color:#a2f;font-weight:700>struct</span>{}
+</span></span><span style=display:flex><span>	<span style=color:#00a000>Err</span>() <span style=color:#0b0;font-weight:700>error</span>
+</span></span><span style=display:flex><span>	<span style=color:#00a000>Value</span>(key <span style=color:#a2f;font-weight:700>interface</span>{}) <span style=color:#a2f;font-weight:700>interface</span>{}
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><p>​ 同时<a href=https://github.com/golang/go/tree/master/src/context target=_blank rel=noopener><code>context</code></a>
+包中提供的 <code>context.Background</code>、<code>context.TODO</code>、<code>context.WithDeadline</code> 和 <code>context.WithValue</code>函数会返回实现该接口的私有结构体</p><h4 id=默认上下文>默认上下文</h4><p>​ <code>context</code>包中最常用的方法还是 <code>context.Background</code>、<code>context.TODO</code>，这两个方法都会返回预先初始化好的私有变量 <code>background</code> 和 <code>todo</code>，它们会在同一个 Go 程序中被复用：</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#a2f;font-weight:700>var</span> (
+</span></span><span style=display:flex><span>	background = <span style=color:#a2f>new</span>(emptyCtx)
+</span></span><span style=display:flex><span>	todo       = <span style=color:#a2f>new</span>(emptyCtx)
+</span></span><span style=display:flex><span>)
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>Background</span>() Context {
+</span></span><span style=display:flex><span>	<span style=color:#a2f;font-weight:700>return</span> background
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>TODO</span>() Context {
+</span></span><span style=display:flex><span>	<span style=color:#a2f;font-weight:700>return</span> todo
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><p>​ 这两个私有变量都是通过 <code>new(emptyCtx)</code> 语句初始化的，它们是指向私有结构体 <a href=https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/context/context.go#L171 target=_blank rel=noopener><code>context.emptyCtx</code></a>
+的指针</p><p>​ 从源代码来看，<code>context.Background</code>和 <code>context.TODO</code>也只是互为别名，没有太大的差别，只是在使用和语义上稍有不同：</p><ul><li><code>context.Background</code> 是上下文的默认值，所有其他的上下文都应该从它衍生出来；</li><li><code>context.TODO</code>应该仅在不确定应该使用哪种上下文时使用；</li></ul><p>在多数情况下，如果当前函数没有上下文作为入参，我们都会使用 <code>context.Background</code>作为起始的上下文向下传递。</p><p><img src=/images/Go%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86%E7%82%B9/context-1.png alt></p><h4 id=官方的-context-类型>官方的 context 类型</h4><p>主要有四种，分别是 <code>emptyCtx</code>，<code>cancelCtx</code>，<code>timerCtx</code>，<code>valueCtx</code>：</p><ul><li><p>emptyCtx：空的 context，实现了上面的 4 个接口，但都是直接 return 默认值，没有具体功能代码。</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#080;font-style:italic>// An emptyCtx is never canceled, has no values, and has no deadline. It is not
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// struct{}, since vars of this type must have distinct addresses.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>type</span> emptyCtx <span style=color:#0b0;font-weight:700>int</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> (<span style=color:#666>*</span>emptyCtx) <span style=color:#00a000>Deadline</span>() (deadline time.Time, ok <span style=color:#0b0;font-weight:700>bool</span>) {
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>return</span>
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> (<span style=color:#666>*</span>emptyCtx) <span style=color:#00a000>Done</span>() <span style=color:#666>&lt;-</span><span style=color:#a2f;font-weight:700>chan</span> <span style=color:#a2f;font-weight:700>struct</span>{} {
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>return</span> <span style=color:#a2f;font-weight:700>nil</span>
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> (<span style=color:#666>*</span>emptyCtx) <span style=color:#00a000>Err</span>() <span style=color:#0b0;font-weight:700>error</span> {
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>return</span> <span style=color:#a2f;font-weight:700>nil</span>
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> (<span style=color:#666>*</span>emptyCtx) <span style=color:#00a000>Value</span>(key <span style=color:#a2f;font-weight:700>interface</span>{}) <span style=color:#a2f;font-weight:700>interface</span>{} {
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>return</span> <span style=color:#a2f;font-weight:700>nil</span>
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> (e <span style=color:#666>*</span>emptyCtx) <span style=color:#00a000>String</span>() <span style=color:#0b0;font-weight:700>string</span> {
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>switch</span> e {
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>case</span> background:
+</span></span><span style=display:flex><span>      <span style=color:#a2f;font-weight:700>return</span> <span style=color:#b44>&#34;context.Background&#34;</span>
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>case</span> todo:
+</span></span><span style=display:flex><span>      <span style=color:#a2f;font-weight:700>return</span> <span style=color:#b44>&#34;context.TODO&#34;</span>
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>return</span> <span style=color:#b44>&#34;unknown empty Context&#34;</span>
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div></li><li><p>cancelCtx：用来取消通知用的 context</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#080;font-style:italic>// A canceler is a context type that can be canceled directly. The
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// implementations are *cancelCtx and *timerCtx.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>type</span> canceler <span style=color:#a2f;font-weight:700>interface</span> {
+</span></span><span style=display:flex><span>   <span style=color:#00a000>cancel</span>(removeFromParent <span style=color:#0b0;font-weight:700>bool</span>, err <span style=color:#0b0;font-weight:700>error</span>)
+</span></span><span style=display:flex><span>   <span style=color:#00a000>Done</span>() <span style=color:#666>&lt;-</span><span style=color:#a2f;font-weight:700>chan</span> <span style=color:#a2f;font-weight:700>struct</span>{}
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// closedchan is a reusable closed channel.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>var</span> closedchan = <span style=color:#a2f>make</span>(<span style=color:#a2f;font-weight:700>chan</span> <span style=color:#a2f;font-weight:700>struct</span>{})
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>init</span>() {
+</span></span><span style=display:flex><span>   <span style=color:#a2f>close</span>(closedchan)
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// A cancelCtx can be canceled. When canceled, it also cancels any children
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// that implement canceler.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>type</span> cancelCtx <span style=color:#a2f;font-weight:700>struct</span> {
+</span></span><span style=display:flex><span>   Context
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>   mu       sync.Mutex            <span style=color:#080;font-style:italic>// protects following fields
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   done     <span style=color:#a2f;font-weight:700>chan</span> <span style=color:#a2f;font-weight:700>struct</span>{}         <span style=color:#080;font-style:italic>// created lazily, closed by first cancel call
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   children <span style=color:#a2f;font-weight:700>map</span>[canceler]<span style=color:#a2f;font-weight:700>struct</span>{} <span style=color:#080;font-style:italic>// set to nil by the first cancel call
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   err      <span style=color:#0b0;font-weight:700>error</span>                 <span style=color:#080;font-style:italic>// set to non-nil by the first cancel call
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> (c <span style=color:#666>*</span>cancelCtx) <span style=color:#00a000>Value</span>(key <span style=color:#a2f;font-weight:700>interface</span>{}) <span style=color:#a2f;font-weight:700>interface</span>{} {
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> key <span style=color:#666>==</span> <span style=color:#666>&amp;</span>cancelCtxKey {
+</span></span><span style=display:flex><span>      <span style=color:#a2f;font-weight:700>return</span> c
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>return</span> c.Context.<span style=color:#00a000>Value</span>(key)
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> (c <span style=color:#666>*</span>cancelCtx) <span style=color:#00a000>Done</span>() <span style=color:#666>&lt;-</span><span style=color:#a2f;font-weight:700>chan</span> <span style=color:#a2f;font-weight:700>struct</span>{} {
+</span></span><span style=display:flex><span>   c.mu.<span style=color:#00a000>Lock</span>()
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> c.done <span style=color:#666>==</span> <span style=color:#a2f;font-weight:700>nil</span> {
+</span></span><span style=display:flex><span>      c.done = <span style=color:#a2f>make</span>(<span style=color:#a2f;font-weight:700>chan</span> <span style=color:#a2f;font-weight:700>struct</span>{})
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   d <span style=color:#666>:=</span> c.done
+</span></span><span style=display:flex><span>   c.mu.<span style=color:#00a000>Unlock</span>()
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>return</span> d
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> (c <span style=color:#666>*</span>cancelCtx) <span style=color:#00a000>Err</span>() <span style=color:#0b0;font-weight:700>error</span> {
+</span></span><span style=display:flex><span>   c.mu.<span style=color:#00a000>Lock</span>()
+</span></span><span style=display:flex><span>   err <span style=color:#666>:=</span> c.err
+</span></span><span style=display:flex><span>   c.mu.<span style=color:#00a000>Unlock</span>()
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>return</span> err
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>type</span> stringer <span style=color:#a2f;font-weight:700>interface</span> {
+</span></span><span style=display:flex><span>   <span style=color:#00a000>String</span>() <span style=color:#0b0;font-weight:700>string</span>
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>contextName</span>(c Context) <span style=color:#0b0;font-weight:700>string</span> {
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> s, ok <span style=color:#666>:=</span> c.(stringer); ok {
+</span></span><span style=display:flex><span>      <span style=color:#a2f;font-weight:700>return</span> s.<span style=color:#00a000>String</span>()
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>return</span> reflectlite.<span style=color:#00a000>TypeOf</span>(c).<span style=color:#00a000>String</span>()
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> (c <span style=color:#666>*</span>cancelCtx) <span style=color:#00a000>String</span>() <span style=color:#0b0;font-weight:700>string</span> {
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>return</span> <span style=color:#00a000>contextName</span>(c.Context) <span style=color:#666>+</span> <span style=color:#b44>&#34;.WithCancel&#34;</span>
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// cancel closes c.done, cancels each of c&#39;s children, and, if
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// removeFromParent is true, removes c from its parent&#39;s children.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>func</span> (c <span style=color:#666>*</span>cancelCtx) <span style=color:#00a000>cancel</span>(removeFromParent <span style=color:#0b0;font-weight:700>bool</span>, err <span style=color:#0b0;font-weight:700>error</span>) {
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> err <span style=color:#666>==</span> <span style=color:#a2f;font-weight:700>nil</span> {
+</span></span><span style=display:flex><span>      <span style=color:#a2f>panic</span>(<span style=color:#b44>&#34;context: internal error: missing cancel error&#34;</span>)
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   c.mu.<span style=color:#00a000>Lock</span>()
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> c.err <span style=color:#666>!=</span> <span style=color:#a2f;font-weight:700>nil</span> {
+</span></span><span style=display:flex><span>      c.mu.<span style=color:#00a000>Unlock</span>()
+</span></span><span style=display:flex><span>      <span style=color:#a2f;font-weight:700>return</span> <span style=color:#080;font-style:italic>// already canceled
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   }
+</span></span><span style=display:flex><span>   c.err = err
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> c.done <span style=color:#666>==</span> <span style=color:#a2f;font-weight:700>nil</span> {
+</span></span><span style=display:flex><span>      c.done = closedchan
+</span></span><span style=display:flex><span>   } <span style=color:#a2f;font-weight:700>else</span> {
+</span></span><span style=display:flex><span>      <span style=color:#a2f>close</span>(c.done)
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>for</span> child <span style=color:#666>:=</span> <span style=color:#a2f;font-weight:700>range</span> c.children {
+</span></span><span style=display:flex><span>      <span style=color:#080;font-style:italic>// NOTE: acquiring the child&#39;s lock while holding parent&#39;s lock.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>      child.<span style=color:#00a000>cancel</span>(<span style=color:#a2f;font-weight:700>false</span>, err)
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   c.children = <span style=color:#a2f;font-weight:700>nil</span>
+</span></span><span style=display:flex><span>   c.mu.<span style=color:#00a000>Unlock</span>()
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> removeFromParent {
+</span></span><span style=display:flex><span>      <span style=color:#00a000>removeChild</span>(c.Context, c)
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div></li><li><p>timerCtx：用来超时通知用的 context</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#666>/</span> A timerCtx carries a timer and a deadline. It embeds a cancelCtx to
+</span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// implement Done and Err. It implements cancel by stopping its timer then
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// delegating to cancelCtx.cancel.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>type</span> timerCtx <span style=color:#a2f;font-weight:700>struct</span> {
+</span></span><span style=display:flex><span>   cancelCtx
+</span></span><span style=display:flex><span>   timer <span style=color:#666>*</span>time.Timer <span style=color:#080;font-style:italic>// Under cancelCtx.mu.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>
+</span></span><span style=display:flex><span>   deadline time.Time
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> (c <span style=color:#666>*</span>timerCtx) <span style=color:#00a000>Deadline</span>() (deadline time.Time, ok <span style=color:#0b0;font-weight:700>bool</span>) {
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>return</span> c.deadline, <span style=color:#a2f;font-weight:700>true</span>
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> (c <span style=color:#666>*</span>timerCtx) <span style=color:#00a000>String</span>() <span style=color:#0b0;font-weight:700>string</span> {
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>return</span> <span style=color:#00a000>contextName</span>(c.cancelCtx.Context) <span style=color:#666>+</span> <span style=color:#b44>&#34;.WithDeadline(&#34;</span> <span style=color:#666>+</span>
+</span></span><span style=display:flex><span>      c.deadline.<span style=color:#00a000>String</span>() <span style=color:#666>+</span> <span style=color:#b44>&#34; [&#34;</span> <span style=color:#666>+</span>
+</span></span><span style=display:flex><span>      time.<span style=color:#00a000>Until</span>(c.deadline).<span style=color:#00a000>String</span>() <span style=color:#666>+</span> <span style=color:#b44>&#34;])&#34;</span>
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> (c <span style=color:#666>*</span>timerCtx) <span style=color:#00a000>cancel</span>(removeFromParent <span style=color:#0b0;font-weight:700>bool</span>, err <span style=color:#0b0;font-weight:700>error</span>) {
+</span></span><span style=display:flex><span>   c.cancelCtx.<span style=color:#00a000>cancel</span>(<span style=color:#a2f;font-weight:700>false</span>, err)
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> removeFromParent {
+</span></span><span style=display:flex><span>      <span style=color:#080;font-style:italic>// Remove this timerCtx from its parent cancelCtx&#39;s children.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>      <span style=color:#00a000>removeChild</span>(c.cancelCtx.Context, c)
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   c.mu.<span style=color:#00a000>Lock</span>()
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> c.timer <span style=color:#666>!=</span> <span style=color:#a2f;font-weight:700>nil</span> {
+</span></span><span style=display:flex><span>      c.timer.<span style=color:#00a000>Stop</span>()
+</span></span><span style=display:flex><span>      c.timer = <span style=color:#a2f;font-weight:700>nil</span>
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   c.mu.<span style=color:#00a000>Unlock</span>()
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div></li><li><p>valueCtx：用来传值的 context</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#080;font-style:italic>// A valueCtx carries a key-value pair. It implements Value for that key and
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// delegates all other calls to the embedded Context.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>type</span> valueCtx <span style=color:#a2f;font-weight:700>struct</span> {
+</span></span><span style=display:flex><span>   Context
+</span></span><span style=display:flex><span>   key, val <span style=color:#a2f;font-weight:700>interface</span>{}
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// stringify tries a bit to stringify v, without using fmt, since we don&#39;t
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// want context depending on the unicode tables. This is only used by
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// *valueCtx.String().
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>stringify</span>(v <span style=color:#a2f;font-weight:700>interface</span>{}) <span style=color:#0b0;font-weight:700>string</span> {
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>switch</span> s <span style=color:#666>:=</span> v.(<span style=color:#a2f;font-weight:700>type</span>) {
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>case</span> stringer:
+</span></span><span style=display:flex><span>      <span style=color:#a2f;font-weight:700>return</span> s.<span style=color:#00a000>String</span>()
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>case</span> <span style=color:#0b0;font-weight:700>string</span>:
+</span></span><span style=display:flex><span>      <span style=color:#a2f;font-weight:700>return</span> s
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>return</span> <span style=color:#b44>&#34;&lt;not Stringer&gt;&#34;</span>
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> (c <span style=color:#666>*</span>valueCtx) <span style=color:#00a000>String</span>() <span style=color:#0b0;font-weight:700>string</span> {
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>return</span> <span style=color:#00a000>contextName</span>(c.Context) <span style=color:#666>+</span> <span style=color:#b44>&#34;.WithValue(type &#34;</span> <span style=color:#666>+</span>
+</span></span><span style=display:flex><span>      reflectlite.<span style=color:#00a000>TypeOf</span>(c.key).<span style=color:#00a000>String</span>() <span style=color:#666>+</span>
+</span></span><span style=display:flex><span>      <span style=color:#b44>&#34;, val &#34;</span> <span style=color:#666>+</span> <span style=color:#00a000>stringify</span>(c.val) <span style=color:#666>+</span> <span style=color:#b44>&#34;)&#34;</span>
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> (c <span style=color:#666>*</span>valueCtx) <span style=color:#00a000>Value</span>(key <span style=color:#a2f;font-weight:700>interface</span>{}) <span style=color:#a2f;font-weight:700>interface</span>{} {
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> c.key <span style=color:#666>==</span> key {
+</span></span><span style=display:flex><span>      <span style=color:#a2f;font-weight:700>return</span> c.val
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>return</span> c.Context.<span style=color:#00a000>Value</span>(key)
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div></li></ul><h4 id=创建emptyctxcancelctxtimerctxvaluectx方法>创建emptyCtx，cancelCtx，timerCtx，valueCtx方法</h4><ul><li><p>emptyCtx</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#080;font-style:italic>// Background returns a non-nil, empty Context. It is never canceled, has no
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// values, and has no deadline. It is typically used by the main function,
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// initialization, and tests, and as the top-level Context for incoming
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// requests.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>Background</span>() Context {
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>return</span> background
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// TODO returns a non-nil, empty Context. Code should use context.TODO when
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// it&#39;s unclear which Context to use or it is not yet available (because the
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// surrounding function has not yet been extended to accept a Context
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// parameter).
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>TODO</span>() Context {
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>return</span> todo
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div></li><li><p>cancelCtx</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#080;font-style:italic>// WithCancel returns a copy of parent with a new Done channel. The returned
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// context&#39;s Done channel is closed when the returned cancel function is called
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// or when the parent context&#39;s Done channel is closed, whichever happens first.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>//
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// Canceling this context releases resources associated with it, so code should
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// call cancel as soon as the operations running in this Context complete.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>WithCancel</span>(parent Context) (ctx Context, cancel CancelFunc) {
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> parent <span style=color:#666>==</span> <span style=color:#a2f;font-weight:700>nil</span> {
+</span></span><span style=display:flex><span>      <span style=color:#a2f>panic</span>(<span style=color:#b44>&#34;cannot create context from nil parent&#34;</span>)
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   c <span style=color:#666>:=</span> <span style=color:#00a000>newCancelCtx</span>(parent)
+</span></span><span style=display:flex><span>   <span style=color:#00a000>propagateCancel</span>(parent, <span style=color:#666>&amp;</span>c)
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>return</span> <span style=color:#666>&amp;</span>c, <span style=color:#a2f;font-weight:700>func</span>() { c.<span style=color:#00a000>cancel</span>(<span style=color:#a2f;font-weight:700>true</span>, Canceled) }
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div></li><li><p>timerCtx</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#080;font-style:italic>// WithDeadline returns a copy of the parent context with the deadline adjusted
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// to be no later than d. If the parent&#39;s deadline is already earlier than d,
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// WithDeadline(parent, d) is semantically equivalent to parent. The returned
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// context&#39;s Done channel is closed when the deadline expires, when the returned
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// cancel function is called, or when the parent context&#39;s Done channel is
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// closed, whichever happens first.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>//
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// Canceling this context releases resources associated with it, so code should
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// call cancel as soon as the operations running in this Context complete.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>WithDeadline</span>(parent Context, d time.Time) (Context, CancelFunc) {
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> parent <span style=color:#666>==</span> <span style=color:#a2f;font-weight:700>nil</span> {
+</span></span><span style=display:flex><span>      <span style=color:#a2f>panic</span>(<span style=color:#b44>&#34;cannot create context from nil parent&#34;</span>)
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> cur, ok <span style=color:#666>:=</span> parent.<span style=color:#00a000>Deadline</span>(); ok <span style=color:#666>&amp;&amp;</span> cur.<span style=color:#00a000>Before</span>(d) {
+</span></span><span style=display:flex><span>      <span style=color:#080;font-style:italic>// The current deadline is already sooner than the new one.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>      <span style=color:#a2f;font-weight:700>return</span> <span style=color:#00a000>WithCancel</span>(parent)
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   c <span style=color:#666>:=</span> <span style=color:#666>&amp;</span>timerCtx{
+</span></span><span style=display:flex><span>      cancelCtx: <span style=color:#00a000>newCancelCtx</span>(parent),
+</span></span><span style=display:flex><span>      deadline:  d,
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   <span style=color:#00a000>propagateCancel</span>(parent, c)
+</span></span><span style=display:flex><span>   dur <span style=color:#666>:=</span> time.<span style=color:#00a000>Until</span>(d)
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> dur <span style=color:#666>&lt;=</span> <span style=color:#666>0</span> {
+</span></span><span style=display:flex><span>      c.<span style=color:#00a000>cancel</span>(<span style=color:#a2f;font-weight:700>true</span>, DeadlineExceeded) <span style=color:#080;font-style:italic>// deadline has already passed
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>      <span style=color:#a2f;font-weight:700>return</span> c, <span style=color:#a2f;font-weight:700>func</span>() { c.<span style=color:#00a000>cancel</span>(<span style=color:#a2f;font-weight:700>false</span>, Canceled) }
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   c.mu.<span style=color:#00a000>Lock</span>()
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>defer</span> c.mu.<span style=color:#00a000>Unlock</span>()
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> c.err <span style=color:#666>==</span> <span style=color:#a2f;font-weight:700>nil</span> {
+</span></span><span style=display:flex><span>      c.timer = time.<span style=color:#00a000>AfterFunc</span>(dur, <span style=color:#a2f;font-weight:700>func</span>() {
+</span></span><span style=display:flex><span>         c.<span style=color:#00a000>cancel</span>(<span style=color:#a2f;font-weight:700>true</span>, DeadlineExceeded)
+</span></span><span style=display:flex><span>      })
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>return</span> c, <span style=color:#a2f;font-weight:700>func</span>() { c.<span style=color:#00a000>cancel</span>(<span style=color:#a2f;font-weight:700>true</span>, Canceled) }
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div></li><li><p>valueCtx</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#080;font-style:italic>// WithValue returns a copy of parent in which the value associated with key is
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// val.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>//
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// Use context Values only for request-scoped data that transits processes and
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// APIs, not for passing optional parameters to functions.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>//
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// The provided key must be comparable and should not be of type
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// string or any other built-in type to avoid collisions between
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// packages using context. Users of WithValue should define their own
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// types for keys. To avoid allocating when assigning to an
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// interface{}, context keys often have concrete type
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// struct{}. Alternatively, exported context key variables&#39; static
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// type should be a pointer or interface.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>WithValue</span>(parent Context, key, val <span style=color:#a2f;font-weight:700>interface</span>{}) Context {
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> parent <span style=color:#666>==</span> <span style=color:#a2f;font-weight:700>nil</span> {
+</span></span><span style=display:flex><span>      <span style=color:#a2f>panic</span>(<span style=color:#b44>&#34;cannot create context from nil parent&#34;</span>)
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> key <span style=color:#666>==</span> <span style=color:#a2f;font-weight:700>nil</span> {
+</span></span><span style=display:flex><span>      <span style=color:#a2f>panic</span>(<span style=color:#b44>&#34;nil key&#34;</span>)
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> !reflectlite.<span style=color:#00a000>TypeOf</span>(key).<span style=color:#00a000>Comparable</span>() {
+</span></span><span style=display:flex><span>      <span style=color:#a2f>panic</span>(<span style=color:#b44>&#34;key is not comparable&#34;</span>)
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>return</span> <span style=color:#666>&amp;</span>valueCtx{parent, key, val}
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div></li></ul><h3 id=make-和-new>make 和 new</h3><ul><li><code>make</code> 的作用是初始化内置的数据结构，也就是我们在前面提到的切片slice、哈希表map和 Channel</li><li><code>new</code> 的作用是根据传入的类型分配一片内存空间并返回指向这片内存空间的指针</li></ul><p><img src=/images/Go%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86%E7%82%B9/golang-make-and-new.png alt></p><h3 id=值接收者和指针接收者的区别>值接收者和指针接收者的区别</h3><p>​ 方法能给用户自定义的类型添加新的行为。它和函数的区别在于方法有一个接收者，给一个函数添加一个接收者，那么它就变成了方法。接收者可以是<code>值接收者</code>，也可以是<code>指针接收者</code>。</p><p>​ 在调用方法的时候，值类型既可以调用<code>值接收者</code>的方法，也可以调用<code>指针接收者</code>的方法；指针类型既可以调用<code>指针接收者</code>的方法，也可以调用<code>值接收者</code>的方法。</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-golang data-lang=golang><span style=display:flex><span><span style=color:#a2f;font-weight:700>type</span> Person <span style=color:#a2f;font-weight:700>struct</span> {
+</span></span><span style=display:flex><span>	age <span style=color:#0b0;font-weight:700>int</span>
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> (p Person) <span style=color:#00a000>howOld</span>() <span style=color:#0b0;font-weight:700>int</span> {
+</span></span><span style=display:flex><span>	<span style=color:#a2f;font-weight:700>return</span> p.age
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> (p <span style=color:#666>*</span>Person) <span style=color:#00a000>growUp</span>() {
+</span></span><span style=display:flex><span>	p.age <span style=color:#666>+=</span> <span style=color:#666>1</span>
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>main</span>() {
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// qcrao 是值类型
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	qcrao <span style=color:#666>:=</span> Person{age: <span style=color:#666>18</span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 值类型 调用接收者也是值类型的方法
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	fmt.<span style=color:#00a000>Println</span>(qcrao.<span style=color:#00a000>howOld</span>())
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 值类型 调用接收者是指针类型的方法
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	qcrao.<span style=color:#00a000>growUp</span>()
+</span></span><span style=display:flex><span>	fmt.<span style=color:#00a000>Println</span>(qcrao.<span style=color:#00a000>howOld</span>())
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// ----------------------
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// stefno 是指针类型
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	stefno <span style=color:#666>:=</span> <span style=color:#666>&amp;</span>Person{age: <span style=color:#666>100</span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 指针类型 调用接收者是值类型的方法
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	fmt.<span style=color:#00a000>Println</span>(stefno.<span style=color:#00a000>howOld</span>())
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 指针类型 调用接收者也是指针类型的方法
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	stefno.<span style=color:#00a000>growUp</span>()
+</span></span><span style=display:flex><span>	fmt.<span style=color:#00a000>Println</span>(stefno.<span style=color:#00a000>howOld</span>())
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#080;font-style:italic>//output
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#666>18</span>
+</span></span><span style=display:flex><span><span style=color:#666>19</span>
+</span></span><span style=display:flex><span><span style=color:#666>100</span>
+</span></span><span style=display:flex><span><span style=color:#666>101</span>
+</span></span></code></pre></div><table><thead><tr><th>-</th><th>值接收者</th><th style=text-align:center>指针接收者</th></tr></thead><tbody><tr><td>值类型调用者</td><td>方法会使用调用者的一个副本，类似于“传值”</td><td style=text-align:center>使用值的引用来调用方法，上例中，<code>qcrao.growUp()</code> 实际上是 <code>(&amp;qcrao).growUp()</code></td></tr><tr><td>指针类型调用者</td><td>指针被解引用为值，上例中，<code>stefno.howOld()</code> 实际上是 <code>(*stefno).howOld()</code></td><td style=text-align:center>实际上也是“传值”，方法里的操作会影响到调用者，类似于指针传参，拷贝了一份指针</td></tr></tbody></table><p>实现了接收者是值类型的方法，相当于自动实现了接收者是指针类型的方法；而实现了接收者是指针类型的方法，不会自动生成对应接收者是值类型的方法。</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-golang data-lang=golang><span style=display:flex><span><span style=color:#a2f;font-weight:700>type</span> coder <span style=color:#a2f;font-weight:700>interface</span> {
+</span></span><span style=display:flex><span>	<span style=color:#00a000>code</span>()
+</span></span><span style=display:flex><span>	<span style=color:#00a000>debug</span>()
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>type</span> Gopher <span style=color:#a2f;font-weight:700>struct</span> {
+</span></span><span style=display:flex><span>	language <span style=color:#0b0;font-weight:700>string</span>
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> (p Gopher) <span style=color:#00a000>code</span>() {
+</span></span><span style=display:flex><span>	fmt.<span style=color:#00a000>Printf</span>(<span style=color:#b44>&#34;I am coding %s language\n&#34;</span>, p.language)
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> (p <span style=color:#666>*</span>Gopher) <span style=color:#00a000>debug</span>() {
+</span></span><span style=display:flex><span>	fmt.<span style=color:#00a000>Printf</span>(<span style=color:#b44>&#34;I am debuging %s language\n&#34;</span>, p.language)
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>main</span>() {
+</span></span><span style=display:flex><span>	<span style=color:#a2f;font-weight:700>var</span> c coder = <span style=color:#666>&amp;</span>Gopher{<span style=color:#b44>&#34;Go&#34;</span>}
+</span></span><span style=display:flex><span>	c.<span style=color:#00a000>code</span>()
+</span></span><span style=display:flex><span>	c.<span style=color:#00a000>debug</span>()
+</span></span><span style=display:flex><span>    
+</span></span><span style=display:flex><span>    <span style=color:#080;font-style:italic>//报错
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   	<span style=color:#a2f;font-weight:700>var</span> c1 coder = Gopher{<span style=color:#b44>&#34;Go&#34;</span>}
+</span></span><span style=display:flex><span>	c1.<span style=color:#00a000>code</span>()
+</span></span><span style=display:flex><span>	c1.<span style=color:#00a000>debug</span>()
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><p>所以，当实现了一个接收者是值类型的方法，就可以自动生成一个接收者是对应指针类型的方法，因为两者都不会影响接收者。但是，当实现了一个接收者是指针类型的方法，如果此时自动生成一个接收者是值类型的方法，原本期望对接收者的改变（通过指针实现），现在无法实现，因为值类型会产生一个拷贝，不会真正影响调用者。</p><p>最后，只要记住下面这点就可以了：</p><blockquote><p>如果实现了接收者是值类型的方法，会隐含地也实现了接收者是指针类型的方法。</p></blockquote><h4 id=两者分别在何时使用>两者分别在何时使用</h4><p>如果方法的接收者是值类型，无论调用者是对象还是对象指针，修改的都是对象的副本，不影响调用者；如果方法的接收者是指针类型，则调用者修改的是指针指向的对象本身。</p><p>使用指针作为方法的接收者的理由：</p><ul><li>方法能够修改接收者指向的值。</li><li>避免在每次调用方法时复制该值，在值的类型为大型结构体时，这样做会更加高效。</li></ul><p>是使用值接收者还是指针接收者，不是由该方法是否修改了调用者（也就是接收者）来决定，而是应该基于该类型的<code>本质</code>。</p><p>如果类型具备“原始的本质”，也就是说它的成员都是由 Go 语言里内置的原始类型，如字符串，整型值等，那就定义值接收者类型的方法。像内置的引用类型，如 slice，map，interface，channel，这些类型比较特殊，声明他们的时候，实际上是创建了一个 <code>header</code>， 对于他们也是直接定义值接收者类型的方法。这样，调用函数时，是直接 copy 了这些类型的 <code>header</code>，而 <code>header</code> 本身就是为复制设计的。</p><p>如果类型具备非原始的本质，不能被安全地复制，这种类型总是应该被共享，那就定义指针接收者的方法。比如 go 源码里的文件结构体（struct File）就不应该被复制，应该只有一份<code>实体</code>。</p><h3 id=接口的动态类型和动态值>接口的动态类型和动态值</h3><p>接口值的零值是指<code>动态类型</code>和<code>动态值</code>都为 <code>nil</code>。当仅且当这两部分的值都为 <code>nil</code> 的情况下，这个接口值就才会被认为 <code>接口值 == nil</code></p><h3 id=反射>反射</h3><p>维基百科上反射的定义：</p><blockquote><p>在计算机科学中，反射是指计算机程序在运行时（Run time）可以访问、检测和修改它本身状态或行为的一种能力。用比喻来说，反射就是程序在运行的时候能够“观察”并且修改自己的行为。</p></blockquote><p>《Go 语言圣经》中是这样定义反射的：</p><blockquote><p>Go 语言提供了一种机制在运行时更新变量和检查它们的值、调用它们的方法，但是在编译时并不知道这些变量的具体类型，这称为反射机制。</p></blockquote><p>使用反射的常见场景有以下两种：</p><ol><li>不能明确接口调用哪个函数，需要根据传入的参数在运行时决定。</li><li>不能明确传入函数的参数类型，需要在运行时处理任意对象。</li></ol><h4 id=如何实现>如何实现</h4><p>​ <code>interface</code>，它是 Go 语言实现抽象的一个非常强大的工具。当向接口变量赋予一个实体类型的时候，接口会存储实体的类型信息，反射就是通过接口的类型信息实现的，反射建立在类型的基础上</p><p>​ Go 语言中，每个变量都有一个静态类型，在编译阶段就确定了的，比如 <code>int, float64, []int</code> 等等。注意，这个类型是声明时候的类型，不是底层数据类型。</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-golang data-lang=golang><span style=display:flex><span><span style=color:#a2f;font-weight:700>type</span> MyInt <span style=color:#0b0;font-weight:700>int</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>var</span> i <span style=color:#0b0;font-weight:700>int</span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>var</span> j MyInt
+</span></span><span style=display:flex><span>尽管 i<span>，</span>j 的底层类型都是 <span style=color:#0b0;font-weight:700>int</span><span>，</span>他们是不同的静态类型<span>，</span>除非进行类型转换<span>，</span>否则<span>，</span>i 和 j 不能同时出现在等号两侧<span>。</span>j 的静态类型就是 MyInt
+</span></span></code></pre></div><p>反射主要与 interface{} 类型相关。关于 interface 的底层结构（iface和eface），如下所示</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-golang data-lang=golang><span style=display:flex><span><span style=color:#a2f;font-weight:700>type</span> iface <span style=color:#a2f;font-weight:700>struct</span> {
+</span></span><span style=display:flex><span>	tab  <span style=color:#666>*</span>itab
+</span></span><span style=display:flex><span>	data unsafe.Pointer
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>type</span> itab <span style=color:#a2f;font-weight:700>struct</span> {
+</span></span><span style=display:flex><span>	inter  <span style=color:#666>*</span>interfacetype
+</span></span><span style=display:flex><span>	_type  <span style=color:#666>*</span>_type
+</span></span><span style=display:flex><span>	link   <span style=color:#666>*</span>itab
+</span></span><span style=display:flex><span>	hash   <span style=color:#0b0;font-weight:700>uint32</span>
+</span></span><span style=display:flex><span>	bad    <span style=color:#0b0;font-weight:700>bool</span>
+</span></span><span style=display:flex><span>	inhash <span style=color:#0b0;font-weight:700>bool</span>
+</span></span><span style=display:flex><span>	unused [<span style=color:#666>2</span>]<span style=color:#0b0;font-weight:700>byte</span>
+</span></span><span style=display:flex><span>	fun    [<span style=color:#666>1</span>]<span style=color:#0b0;font-weight:700>uintptr</span>
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><p>其中 <code>itab</code> 由具体类型 <code>_type</code> 以及 <code>interfacetype</code> 组成。<code>_type</code> 表示具体类型，而 <code>interfacetype</code> 则表示具体类型实现的接口类型</p><p><img src=/images/Go%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86%E7%82%B9/reflect-1.png alt></p><p>实际上，iface 描述的是非空接口，它包含方法；与之相对的是 <code>eface</code>，描述的是空接口，不包含任何方法，Go 语言里所以类型都 <code>“实现了”</code> 空接口</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-golang data-lang=golang><span style=display:flex><span><span style=color:#a2f;font-weight:700>type</span> eface <span style=color:#a2f;font-weight:700>struct</span> {
+</span></span><span style=display:flex><span>    _type <span style=color:#666>*</span>_type
+</span></span><span style=display:flex><span>    data  unsafe.Pointer
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><p>相比 <code>iface</code>，<code>eface</code> 就比较简单了。只维护了一个 <code>_type</code> 字段，表示空接口所承载的具体的实体类型。<code>data</code> 描述了具体的值</p><p><img src=/images/Go%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86%E7%82%B9/reflect-2.png alt></p><h4 id=接口interface的静态类型和动态类型>接口interface的静态类型和动态类型</h4><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-golang data-lang=golang><span style=display:flex><span><span style=color:#a2f;font-weight:700>type</span> Reader <span style=color:#a2f;font-weight:700>interface</span> {
+</span></span><span style=display:flex><span>    <span style=color:#00a000>Read</span>(p []<span style=color:#0b0;font-weight:700>byte</span>) (n <span style=color:#0b0;font-weight:700>int</span>, err <span style=color:#0b0;font-weight:700>error</span>)
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>type</span> Writer <span style=color:#a2f;font-weight:700>interface</span> {
+</span></span><span style=display:flex><span>    <span style=color:#00a000>Write</span>(p []<span style=color:#0b0;font-weight:700>byte</span>) (n <span style=color:#0b0;font-weight:700>int</span>, err <span style=color:#0b0;font-weight:700>error</span>)
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>var</span> r io.Reader
+</span></span><span style=display:flex><span>tty, err <span style=color:#666>:=</span> os.<span style=color:#00a000>OpenFile</span>(<span style=color:#b44>&#34;/Users/qcrao/Desktop/test&#34;</span>, os.O_RDWR, <span style=color:#666>0</span>)
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>if</span> err <span style=color:#666>!=</span> <span style=color:#a2f;font-weight:700>nil</span> {
+</span></span><span style=display:flex><span>    <span style=color:#a2f;font-weight:700>return</span> <span style=color:#a2f;font-weight:700>nil</span>, err
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>r = tty
+</span></span></code></pre></div><p>首先声明 <code>r</code> 的类型是 <code>io.Reader</code>，注意，这是 <code>r</code> 的静态类型，此时它的动态类型为 <code>nil</code>，并且它的动态值也是 <code>nil</code>。</p><p>之后，<code>r = tty</code> 这一语句，将 <code>r</code> 的动态类型变成 <code>*os.File</code>，动态值则变成非空，表示打开的文件对象。这时，r 可以用<code>&lt;value, type></code>对来表示为： <code>&lt;tty, *os.File></code></p><p><img src=/images/Go%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86%E7%82%B9/reflect-3.png alt></p><p>注意看上图，此时虽然 <code>fun</code> 所指向的函数只有一个 <code>Read</code> 函数，其实 <code>*os.File</code> 还包含 <code>Write</code> 函数，也就是说 <code>*os.File</code> 其实还实现了 <code>io.Writer</code> 接口。因此下面的断言语句可以执行：</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-golang data-lang=golang><span style=display:flex><span><span style=color:#a2f;font-weight:700>var</span> w io.Writer
+</span></span><span style=display:flex><span>w = r.(io.Writer)
+</span></span></code></pre></div><p>之所以用断言，而不能直接赋值，是因为 <code>r</code> 的静态类型是 <code>io.Reader</code>，并没有实现 <code>io.Writer</code> 接口。断言能否成功，看 <code>r</code> 的动态类型是否符合要求</p><p>这样，w 也可以表示成 <code>&lt;tty, *os.File></code>，仅管它和 <code>r</code> 一样，但是 w 可调用的函数取决于它的静态类型 <code>io.Writer</code>，也就是说它只能有这样的调用形式： <code>w.Write()</code> 。<code>w</code> 的内存形式如下图：</p><p><img src=/images/Go%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86%E7%82%B9/reflect-4.png alt></p><p>和 <code>r</code> 相比，仅仅是 <code>fun</code> 对应的函数变了：<code>Read -> Write</code></p><p>接着将w赋值给empty</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-golang data-lang=golang><span style=display:flex><span><span style=color:#a2f;font-weight:700>var</span> empty <span style=color:#a2f;font-weight:700>interface</span>{}
+</span></span><span style=display:flex><span>empty = w
+</span></span></code></pre></div><p><img src=/images/Go%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86%E7%82%B9/reflect-5.png alt></p><p><img src=/images/Go%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86%E7%82%B9/reflect-6.png alt></p><h4 id=反射的基本函数>反射的基本函数</h4><ul><li><p>reflect.ValueOf() 获取输入参数接口中的数据的值</p><p>源码：src/reflect/value.go</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-golang data-lang=golang><span style=display:flex><span><span style=color:#080;font-style:italic>// ValueOf returns a new Value initialized to the concrete value
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// stored in the interface i. ValueOf(nil) returns the zero Value.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>ValueOf</span>(i <span style=color:#a2f;font-weight:700>interface</span>{}) Value {
+</span></span><span style=display:flex><span>	<span style=color:#a2f;font-weight:700>if</span> i <span style=color:#666>==</span> <span style=color:#a2f;font-weight:700>nil</span> {
+</span></span><span style=display:flex><span>		<span style=color:#a2f;font-weight:700>return</span> Value{}
+</span></span><span style=display:flex><span>	}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// TODO: Maybe allow contents of a Value to live on the stack.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#080;font-style:italic>// For now we make the contents always escape to the heap. It
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#080;font-style:italic>// makes life easier in a few places (see chanrecv/mapassign
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#080;font-style:italic>// comment below).
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>escapes</span>(i)
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#a2f;font-weight:700>return</span> <span style=color:#00a000>unpackEface</span>(i)
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>还有一堆关于value的类型方法<span style=color:#666>......</span>.
+</span></span></code></pre></div></li><li><p>reflect.TypeOf() 获取输入参数接口中值的类型</p><p>源码：src/reflect/type.go</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-golang data-lang=golang><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>TypeOf</span>(i <span style=color:#a2f;font-weight:700>interface</span>{}) Type {
+</span></span><span style=display:flex><span>	eface <span style=color:#666>:=</span> <span style=color:#666>*</span>(<span style=color:#666>*</span>emptyInterface)(unsafe.<span style=color:#00a000>Pointer</span>(<span style=color:#666>&amp;</span>i))
+</span></span><span style=display:flex><span>	<span style=color:#a2f;font-weight:700>return</span> <span style=color:#00a000>toType</span>(eface.typ)
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>type</span> Type <span style=color:#a2f;font-weight:700>interface</span> {
+</span></span><span style=display:flex><span>    <span style=color:#080;font-style:italic>// 所有的类型都可以调用下面这些函数
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 此类型的变量对齐后所占用的字节数
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>Align</span>() <span style=color:#0b0;font-weight:700>int</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 如果是 struct 的字段，对齐后占用的字节数
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>FieldAlign</span>() <span style=color:#0b0;font-weight:700>int</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 返回类型方法集里的第 `i` (传入的参数)个方法
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>Method</span>(<span style=color:#0b0;font-weight:700>int</span>) Method
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 通过名称获取方法
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>MethodByName</span>(<span style=color:#0b0;font-weight:700>string</span>) (Method, <span style=color:#0b0;font-weight:700>bool</span>)
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 获取类型方法集里导出的方法个数
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>NumMethod</span>() <span style=color:#0b0;font-weight:700>int</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 类型名称
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>Name</span>() <span style=color:#0b0;font-weight:700>string</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 返回类型所在的路径，如：encoding/base64
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>PkgPath</span>() <span style=color:#0b0;font-weight:700>string</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 返回类型的大小，和 unsafe.Sizeof 功能类似
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>Size</span>() <span style=color:#0b0;font-weight:700>uintptr</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 返回类型的字符串表示形式
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>String</span>() <span style=color:#0b0;font-weight:700>string</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 返回类型的类型值
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>Kind</span>() Kind
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 类型是否实现了接口 u
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>Implements</span>(u Type) <span style=color:#0b0;font-weight:700>bool</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 是否可以赋值给 u
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>AssignableTo</span>(u Type) <span style=color:#0b0;font-weight:700>bool</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 是否可以类型转换成 u
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>ConvertibleTo</span>(u Type) <span style=color:#0b0;font-weight:700>bool</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 类型是否可以比较
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>Comparable</span>() <span style=color:#0b0;font-weight:700>bool</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 下面这些函数只有特定类型可以调用
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#080;font-style:italic>// 如：Key, Elem 两个方法就只能是 Map 类型才能调用
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 类型所占据的位数
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>Bits</span>() <span style=color:#0b0;font-weight:700>int</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 返回通道的方向，只能是 chan 类型调用
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>ChanDir</span>() ChanDir
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 返回类型是否是可变参数，只能是 func 类型调用
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#080;font-style:italic>// 比如 t 是类型 func(x int, y ... float64)
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#080;font-style:italic>// 那么 t.IsVariadic() == true
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>IsVariadic</span>() <span style=color:#0b0;font-weight:700>bool</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 返回内部子元素类型，只能由类型 Array, Chan, Map, Ptr, or Slice 调用
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>Elem</span>() Type
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 返回结构体类型的第 i 个字段，只能是结构体类型调用
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#080;font-style:italic>// 如果 i 超过了总字段数，就会 panic
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>Field</span>(i <span style=color:#0b0;font-weight:700>int</span>) StructField
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 返回嵌套的结构体的字段
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>FieldByIndex</span>(index []<span style=color:#0b0;font-weight:700>int</span>) StructField
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 通过字段名称获取字段
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>FieldByName</span>(name <span style=color:#0b0;font-weight:700>string</span>) (StructField, <span style=color:#0b0;font-weight:700>bool</span>)
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// FieldByNameFunc returns the struct field with a name
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#080;font-style:italic>// 返回名称符合 func 函数的字段
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>FieldByNameFunc</span>(match <span style=color:#a2f;font-weight:700>func</span>(<span style=color:#0b0;font-weight:700>string</span>) <span style=color:#0b0;font-weight:700>bool</span>) (StructField, <span style=color:#0b0;font-weight:700>bool</span>)
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 获取函数类型的第 i 个参数的类型
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>In</span>(i <span style=color:#0b0;font-weight:700>int</span>) Type
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 返回 map 的 key 类型，只能由类型 map 调用
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>Key</span>() Type
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 返回 Array 的长度，只能由类型 Array 调用
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>Len</span>() <span style=color:#0b0;font-weight:700>int</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 返回类型字段的数量，只能由类型 Struct 调用
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>NumField</span>() <span style=color:#0b0;font-weight:700>int</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 返回函数类型的输入参数个数
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>NumIn</span>() <span style=color:#0b0;font-weight:700>int</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 返回函数类型的返回值个数
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>NumOut</span>() <span style=color:#0b0;font-weight:700>int</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 返回函数类型的第 i 个值的类型
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>Out</span>(i <span style=color:#0b0;font-weight:700>int</span>) Type
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>    <span style=color:#080;font-style:italic>// 返回类型结构体的相同部分
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>common</span>() <span style=color:#666>*</span>rtype
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// 返回类型结构体的不同部分
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#00a000>uncommon</span>() <span style=color:#666>*</span>uncommonType
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div></li><li><p>reflect.ValueOf().Elem() 获取原始可操作的数据</p></li></ul><h4 id=反射的三大定律>反射的三大定律</h4><ul><li><p>反射可以将interface 类型变量转换成反射对象</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>main</span>(){
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>var</span> x <span style=color:#0b0;font-weight:700>float64</span> = <span style=color:#666>3.4</span>
+</span></span><span style=display:flex><span>   t <span style=color:#666>:=</span> reflect.<span style=color:#00a000>TypeOf</span>(x)
+</span></span><span style=display:flex><span>   fmt.<span style=color:#00a000>Println</span>(<span style=color:#b44>&#34;type:&#34;</span>, t)
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>   v <span style=color:#666>:=</span> reflect.<span style=color:#00a000>ValueOf</span>(x)
+</span></span><span style=display:flex><span>   fmt.<span style=color:#00a000>Println</span>(<span style=color:#b44>&#34;value&#34;</span>, v)
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div></li><li><p>反射可以将反射对象还原成interface 对象</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>main</span>(){
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>var</span> x <span style=color:#0b0;font-weight:700>float64</span> = <span style=color:#666>3.4</span>
+</span></span><span style=display:flex><span>   v <span style=color:#666>:=</span> reflect.<span style=color:#00a000>ValueOf</span>(x) <span style=color:#080;font-style:italic>//v is reflext.Value
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   <span style=color:#a2f;font-weight:700>var</span> y <span style=color:#0b0;font-weight:700>float64</span> = v.<span style=color:#00a000>Interface</span>().(<span style=color:#0b0;font-weight:700>float64</span>)
+</span></span><span style=display:flex><span>   fmt.<span style=color:#00a000>Println</span>(<span style=color:#b44>&#34;value&#34;</span>, y)
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div></li><li><p>反射对象可修改，value值必须是可设置的</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-fallback data-lang=fallback><span style=display:flex><span>func main(){
+</span></span><span style=display:flex><span>   var x float64 = 3.4
+</span></span><span style=display:flex><span>   v := reflect.ValueOf(&amp;x)
+</span></span><span style=display:flex><span>   v.Elem().SetFloat(6.6)
+</span></span><span style=display:flex><span>   fmt.Println(&#34;x :&#34;, v.Elem().Interface())
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div></li></ul><h3 id=断言>断言</h3><p>类型断言（Type Assertion）是一个使用在接口值上的操作，用于检查接口类型变量所持有的值是否实现了期望的接口或者具体的类型。</p><p>在Go语言中类型断言的语法格式如下：</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span>value, ok <span style=color:#666>:=</span> x.(T)
+</span></span></code></pre></div><p>其中，x 表示一个接口的类型，T 表示一个具体的类型（也可为接口类型）。</p><p>该断言表达式会返回 x 的值（也就是 value）和一个布尔值（也就是 ok），可根据该布尔值判断 x 是否为 T 类型：</p><ul><li>如果 T 是具体某个类型，类型断言会检查 x 的动态类型是否等于具体类型 T。如果检查成功，类型断言返回的结果是 x 的<strong>动态值</strong>，其类型是 T。</li><li>如果 T 是接口类型，类型断言会检查 x 的动态类型是否满足 T。如果检查成功，x 的动态值不会被提取，返回值是一个类型为 T 的接口值。</li><li>无论 T 是什么类型，如果 x 是 nil 接口值，类型断言都会失败。</li></ul><h3 id=内存模型>内存模型</h3><p>​ 基本模型的相关概念和理解可以参考我另一篇文章（重点看图理解）：https://mrvwy.github.io/2020/08/02/%E8%81%8A%E8%81%8Athread-caching-malloc/</p><p><img src=%E5%85%AB%E8%82%A1%E6%96%87-go%5C20200722022116565.png alt></p><p>​ <a href=https://github.com/google/tcmalloc target=_blank rel=noopener>TCMalloc</a>
+是用来替代传统的malloc内存分配函数。它有减少内存碎片，适用于多核，更好的并行性支持等特性。</p><p>相关名词概念：</p><ol><li><p>Page</p><p>操作系统对内存管理的单位，TCMalloc也是以页为单位管理内存，但是TCMalloc中Page大小是操作系统中页的倍数关系。2，4，8 &mldr;.</p></li><li><p>Span</p><p>Span 是PageHeap中管理内存页的单位，它是由一组连续的Page组成，比如2个Page组成的span，多个这样的span就用链表来管理。当然，还可以有4个Page组成的span等等。</p></li><li><p>ThreadCache</p><p>ThreadCache是每个线程各自独立拥有的cache，一个cache包含多个空闲内存链表（size classes），每一个链表（size-class）都有自己的object，每个object都是大小相同的。</p></li><li><p>CentralCache</p><p>CentralCache是当ThreadCache内存不足时，提供内存供其使用。它保持的是空闲块链表，链表数量和ThreadCache数量相同。ThreadCache中内存过多时，可以放回CentralCache中。</p></li><li><p>PageHeap</p><p>PageHeap保存的也是若干链表，不过链表保存的是Span（多个相同的page组成一个Span）。CentralCache内存不足时，可以从PageHeap获取Span，然后把Span切割成object。</p></li></ol><h3 id=map>map</h3><h4 id=为啥是无序的>为啥是无序的</h4><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#080;font-style:italic>//https://github.com/golang/go/blob/36f30ba289e31df033d100b2adb4eaf557f05a34/src/runtime/map.go
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>mapiterinit</span>(t <span style=color:#666>*</span>maptype, h <span style=color:#666>*</span>hmap, it <span style=color:#666>*</span>hiter) {
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>// decide where to start
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	r <span style=color:#666>:=</span> <span style=color:#a2f>uintptr</span>(<span style=color:#00a000>fastrand</span>())
+</span></span><span style=display:flex><span>	<span style=color:#a2f;font-weight:700>if</span> h.B &gt; <span style=color:#666>31</span><span style=color:#666>-</span>bucketCntBits {
+</span></span><span style=display:flex><span>		r <span style=color:#666>+=</span> <span style=color:#a2f>uintptr</span>(<span style=color:#00a000>fastrand</span>()) <span style=color:#666>&lt;&lt;</span> <span style=color:#666>31</span>
+</span></span><span style=display:flex><span>	}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#00a000>mapiternext</span>(it)
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><p>主要是因为 map 在扩容后，可能会将部分 key 移至新内存，那么这一部分实际上就已经是无序的了。而遍历的过程，其实就是按顺序遍历内存地址，同时按顺序遍历内存地址中的 key。但这时已经是无序的了。当然如果就一个 map，我保证不会对 map 进行修改删除等操作，那么按理说没有扩容就不会发生改变。但也是因为这样，GO 才在源码中加上随机的元素，将遍历 map 的顺序随机化，用来防止使用者用来顺序遍历，因为在某些情况下，可能会酿成大错。</p><h4 id=原理>原理</h4><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#080;font-style:italic>// A header for a Go map.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>type</span> hmap <span style=color:#a2f;font-weight:700>struct</span> {
+</span></span><span style=display:flex><span>   <span style=color:#080;font-style:italic>// 元素个数，调用 len(map) 时，直接返回此值
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   count     <span style=color:#0b0;font-weight:700>int</span>
+</span></span><span style=display:flex><span>   flags     <span style=color:#0b0;font-weight:700>uint8</span>
+</span></span><span style=display:flex><span>   <span style=color:#080;font-style:italic>// buckets 的对数 log_2
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   B         <span style=color:#0b0;font-weight:700>uint8</span>
+</span></span><span style=display:flex><span>   <span style=color:#080;font-style:italic>// overflow 的 bucket 近似数
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   noverflow <span style=color:#0b0;font-weight:700>uint16</span>
+</span></span><span style=display:flex><span>   <span style=color:#080;font-style:italic>// 计算 key 的哈希的时候会传入哈希函数
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   hash0     <span style=color:#0b0;font-weight:700>uint32</span>
+</span></span><span style=display:flex><span>   <span style=color:#080;font-style:italic>// 指向 buckets 数组，大小为 2^B
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   <span style=color:#080;font-style:italic>// 如果元素个数为0，就为 nil
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   buckets    unsafe.Pointer
+</span></span><span style=display:flex><span>   <span style=color:#080;font-style:italic>// 扩容的时候，buckets 长度会是 oldbuckets 的两倍
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   oldbuckets unsafe.Pointer
+</span></span><span style=display:flex><span>   <span style=color:#080;font-style:italic>// 指示扩容进度，小于此地址的 buckets 迁移完成
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   nevacuate  <span style=color:#0b0;font-weight:700>uintptr</span>
+</span></span><span style=display:flex><span>   extra <span style=color:#666>*</span>mapextra <span style=color:#080;font-style:italic>// optional fields
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>}
+</span></span></code></pre></div><p><code>B</code> 是 buckets 数组的长度的对数，也就是说 buckets 数组的长度就是 2^B。bucket 里面存储了 key 和 value，后面会再讲。</p><p>buckets 是一个指针，最终它指向的是一个结构体：</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#080;font-style:italic>// A bucket for a Go map.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>type</span> bmap <span style=color:#a2f;font-weight:700>struct</span> {
+</span></span><span style=display:flex><span>   <span style=color:#080;font-style:italic>// tophash generally contains the top byte of the hash value
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   <span style=color:#080;font-style:italic>// for each key in this bucket. If tophash[0] &lt; minTopHash,
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   <span style=color:#080;font-style:italic>// tophash[0] is a bucket evacuation state instead.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   tophash [bucketCnt]<span style=color:#0b0;font-weight:700>uint8</span>
+</span></span><span style=display:flex><span>   <span style=color:#080;font-style:italic>// Followed by bucketCnt keys and then bucketCnt elems.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   <span style=color:#080;font-style:italic>// NOTE: packing all the keys together and then all the elems together makes the
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   <span style=color:#080;font-style:italic>// code a bit more complicated than alternating key/elem/key/elem/... but it allows
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   <span style=color:#080;font-style:italic>// us to eliminate padding which would be needed for, e.g., map[int64]int8.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   <span style=color:#080;font-style:italic>// Followed by an overflow pointer.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>}
+</span></span></code></pre></div><p><code>bmap</code> 就是我们常说的“桶”，桶里面会最多装 8 个 key，这些 key 之所以会落入同一个桶，是因为它们经过哈希计算后，哈希结果是“一类”的。在桶内，又会根据 key 计算出来的 hash 值的高 8 位来决定 key 到底落入桶内的哪个位置（一个桶内最多有8个位置）。</p><p>整体图</p><p><img src=/images/Go%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86%E7%82%B9/map-1.png alt></p><p>当 map 的 key 和 value 都不是指针，并且 size 都小于 128 字节的情况下，会把 bmap 标记为不含指针，这样可以避免 gc 时扫描整个 hmap。但是，我们看 bmap 其实有一个 overflow 的字段，是指针类型的，破坏了 bmap 不含指针的设想，这时会把 overflow 移动到 extra 字段来。</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#080;font-style:italic>// mapextra holds fields that are not present on all maps.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>type</span> mapextra <span style=color:#a2f;font-weight:700>struct</span> {
+</span></span><span style=display:flex><span>   <span style=color:#080;font-style:italic>// If both key and elem do not contain pointers and are inline, then we mark bucket
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   <span style=color:#080;font-style:italic>// type as containing no pointers. This avoids scanning such maps.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   <span style=color:#080;font-style:italic>// However, bmap.overflow is a pointer. In order to keep overflow buckets
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   <span style=color:#080;font-style:italic>// alive, we store pointers to all overflow buckets in hmap.extra.overflow and hmap.extra.oldoverflow.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   <span style=color:#080;font-style:italic>// overflow and oldoverflow are only used if key and elem do not contain pointers.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   <span style=color:#080;font-style:italic>// overflow contains overflow buckets for hmap.buckets.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   <span style=color:#080;font-style:italic>// oldoverflow contains overflow buckets for hmap.oldbuckets.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   <span style=color:#080;font-style:italic>// The indirection allows to store a pointer to the slice in hiter.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   overflow    <span style=color:#666>*</span>[]<span style=color:#666>*</span>bmap
+</span></span><span style=display:flex><span>   oldoverflow <span style=color:#666>*</span>[]<span style=color:#666>*</span>bmap
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>   <span style=color:#080;font-style:italic>// nextOverflow holds a pointer to a free overflow bucket.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   nextOverflow <span style=color:#666>*</span>bmap
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><p>bmap 是存放 k-v 的地方，bmap 的内部组成如下</p><p><img src=/images/Go%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86%E7%82%B9/map-1.png alt></p><p>上图就是 bucket 的内存模型，<code>HOB Hash</code> 指的就是 top hash。 注意到 key 和 value 是各自放在一起的，并不是 <code>key/value/key/value/...</code> 这样的形式。源码里说明这样的好处是在某些情况下可以省略掉 padding 字段，节省内存空间。</p><p>例如，有这样一个类型的 map：map[int64]int8，如果按照 <code>key/value/key/value/...</code> 这样的模式存储，那在每一个 key/value 对之后都要额外 padding 7 个字节；而将所有的 key，value 分别绑定到一起，这种形式 <code>key/key/.../value/value/...</code>，则只需要在最后添加 padding。每个 bucket 设计成最多只能放 8 个 key-value 对，如果有第 9 个 key-value 落入当前的 bucket，那就需要再构建一个 bucket ，通过 <code>overflow</code> 指针连接起来。</p><h4 id=扩容>扩容</h4><p>符合下面这 2 个条件，就会触发扩容：</p><ol><li>装载因子超过阈值，源码里定义的阈值是 6.5。当装载因子超过 6.5 时，表明很多 bucket 都快要装满了，查找效率和插入效率都变低了。在这个时候进行扩容是有必要的</li><li>overflow 的 bucket 数量过多：当 B 小于 15，也就是 bucket 总数 2^B 小于 2^15 时，如果 overflow 的 bucket 数量超过 2^B；当 B >= 15，也就是 bucket 总数 2^B 大于等于 2^15，如果 overflow 的 bucket 数量超过 2^15。</li></ol><h4 id=注意>注意</h4><ol><li>直接将使用 map1 == map2 是错误的。这种写法只能比较 map 是否为 nil。</li><li>无法对 map 的 key 或 value 进行取址</li><li>map 并不是一个线程安全的数据结构。同时读写一个 map 是未定义的行为，如果被检测到，会直接 panic。可以通过读写锁来解决：<code>sync.RWMutex</code></li><li>map 不是线程安全的。在查找、赋值、遍历、删除的过程中都会检测写标志，一旦发现写标志置位（等于1），则直接 panic。赋值和删除函数在检测完写标志是复位之后，先将写标志位置位，才会进行之后的操作。</li></ol><h3 id=值传递和引用传递>值传递和引用传递</h3><h4 id=形参和实参>形参和实参</h4><ul><li>形式参数：是在定义函数名和函数体的时候使用的参数,目的是用来接收调用该函数时传入的参数。</li><li>实际参数：在调用有参函数时，主调函数和被调函数之间有数据传递关系。在主调函数中调用一个函数时，函数名后面括号中的参数称为“实际参数”</li></ul><h4 id=值传递和引用传递-1>值传递和引用传递</h4><p>Go语言中所有的传参都是值传递（传值），都是一个副本，一个拷贝。因为拷贝的内容有时候是非引用类型（int、string、struct等这些），这样就在函数中就无法修改原内容数据；有的是引用类型（指针、map、slice、chan等这些），这样就可以修改原内容数据。</p><h3 id=内存对齐>内存对齐</h3><p>​ 相关概念和理解可以参考我另一篇文章：https://mrvwy.github.io/2020/07/18/data-structure-alignment/</p><p>​ 例子：</p><p><img src=/images/Go%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86%E7%82%B9/%E5%86%85%E5%AD%98%E5%AF%B9%E9%BD%90.png alt></p><p>变量 a、b 各占据 3 字节的空间，内存对齐后，a、b 占据 4 字节空间，CPU 读取 b 变量的值只需要进行一次内存访问。如果不进行内存对齐，CPU 读取 b 变量的值需要进行 2 次内存访问。第一次访问得到 b 变量的第 1 个字节，第二次访问得到 b 变量的后两个字节。</p><h3 id=rune-类型>rune 类型</h3><ul><li>uint8 类型，或者叫 byte 型，代表了 ASCII 码的一个字符。</li><li>rune 类型，代表一个 UTF-8 字符，当需要处理中文、日文或者其他复合字符时，则需要用到 rune 类型。rune 类型等价于 int32 类型。</li></ul><h3 id=defer和return执行先后顺序>defer和return执行先后顺序</h3><ol><li>多个defer的执行顺序为“后进先出”；</li><li>defer、return、返回值三者的执行逻辑应该是：return最先执行，return负责将结果写入返回值中；接着defer开始执行一些收尾工作；最后函数携带当前返回值退出。</li></ol><p>​ 如果函数的返回值是无名的（不带命名返回值），则go语言会在执行return的时候会执行一个类似<strong>创建一个临时变量作为保存return值的动作</strong>，而有名返回值的函数，由于返回值在函数定义的时候已经将该变量进行定义，在执行return的时候会先执行返回值保存操作，而后续的defer函数会改变这个返回值(虽然defer是在return之后执行的，但是由于使用的函数定义的变量，所以执行defer操作后对该变量的修改会影响到return的值</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#080;font-style:italic>//例子1
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>increaseA</span>() <span style=color:#0b0;font-weight:700>int</span> { <span style=color:#080;font-style:italic>// 返回的是ret
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>    <span style=color:#a2f;font-weight:700>var</span> i <span style=color:#0b0;font-weight:700>int</span> <span style=color:#080;font-style:italic>//1. i被初始化为0
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>    <span style=color:#a2f;font-weight:700>defer</span> <span style=color:#a2f;font-weight:700>func</span>() {
+</span></span><span style=display:flex><span>        i<span style=color:#666>++</span> <span style=color:#080;font-style:italic>// 3. i = 1
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>    }()
+</span></span><span style=display:flex><span>    <span style=color:#a2f;font-weight:700>return</span> i <span style=color:#080;font-style:italic>// 2. ret = i
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>increaseB</span>() (r <span style=color:#0b0;font-weight:700>int</span>) {
+</span></span><span style=display:flex><span>    <span style=color:#a2f;font-weight:700>defer</span> <span style=color:#a2f;font-weight:700>func</span>() {
+</span></span><span style=display:flex><span>        r<span style=color:#666>++</span>
+</span></span><span style=display:flex><span>    }()
+</span></span><span style=display:flex><span>    <span style=color:#a2f;font-weight:700>return</span> r
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>main</span>() {
+</span></span><span style=display:flex><span>    fmt.<span style=color:#00a000>Println</span>(<span style=color:#00a000>increaseA</span>())
+</span></span><span style=display:flex><span>    fmt.<span style=color:#00a000>Println</span>(<span style=color:#00a000>increaseB</span>())
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span><span style=color:#080;font-style:italic>//output ：  0  1
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>//分析：1.发生return时，将赋值给返回值（可以理解为go自动创建了一个返回值ret，相当于执行了ret=value），此时defer修改该的是value而不是ret。
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>//2 .而在命名返回值函数中，由于返回值在方法定义时已经被定义，所以不会在创建retValue了，defer对value的修改也会被直接返回。
+</span></span></span></code></pre></div><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#080;font-style:italic>//例子2
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>f1</span>() (r <span style=color:#0b0;font-weight:700>int</span>) { <span style=color:#080;font-style:italic>//有命名返回，返回是r
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>    <span style=color:#a2f;font-weight:700>defer</span> <span style=color:#a2f;font-weight:700>func</span>() {
+</span></span><span style=display:flex><span>        r<span style=color:#666>++</span> <span style=color:#080;font-style:italic>//2. r = r + 1 = 1
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>    }()
+</span></span><span style=display:flex><span>    <span style=color:#a2f;font-weight:700>return</span> <span style=color:#666>0</span> <span style=color:#080;font-style:italic>// 1. r = 0
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>f2</span>() (r <span style=color:#0b0;font-weight:700>int</span>) { <span style=color:#080;font-style:italic>//有命名返回，返回是r
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>    t <span style=color:#666>:=</span> <span style=color:#666>5</span>
+</span></span><span style=display:flex><span>    <span style=color:#a2f;font-weight:700>defer</span> <span style=color:#a2f;font-weight:700>func</span>() {
+</span></span><span style=display:flex><span>        t = t <span style=color:#666>+</span> <span style=color:#666>5</span> <span style=color:#080;font-style:italic>// 2. t = t + 5 = 10
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>    }() 
+</span></span><span style=display:flex><span>    <span style=color:#a2f;font-weight:700>return</span> t <span style=color:#080;font-style:italic>// 1 . r = t = 5
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>f3</span>() (r <span style=color:#0b0;font-weight:700>int</span>) { <span style=color:#080;font-style:italic>//有命名返回，返回是r
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>    <span style=color:#a2f;font-weight:700>defer</span> <span style=color:#a2f;font-weight:700>func</span>(r <span style=color:#0b0;font-weight:700>int</span>) {
+</span></span><span style=display:flex><span>        r = r <span style=color:#666>+</span> <span style=color:#666>5</span>  <span style=color:#080;font-style:italic>//进入defer的函数之后r又是一个全新的指向不同内存地址的变量，不会对外层函数返回的r造成影响
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>    }(r)
+</span></span><span style=display:flex><span>    <span style=color:#a2f;font-weight:700>return</span> <span style=color:#666>1</span> <span style=color:#080;font-style:italic>//1. r = 1
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>f4</span>() (r <span style=color:#0b0;font-weight:700>int</span>) { <span style=color:#080;font-style:italic>//有命名返回，返回是r
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>    t <span style=color:#666>:=</span> <span style=color:#666>5</span>
+</span></span><span style=display:flex><span>    <span style=color:#a2f;font-weight:700>defer</span> <span style=color:#a2f;font-weight:700>func</span>() {
+</span></span><span style=display:flex><span>        r = t <span style=color:#666>+</span> <span style=color:#666>5</span> <span style=color:#080;font-style:italic>// 2. r = t + 5 = 10
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>    }()
+</span></span><span style=display:flex><span>    <span style=color:#a2f;font-weight:700>return</span> t <span style=color:#080;font-style:italic>//1. r = t = 5
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>}
+</span></span><span style=display:flex><span><span style=color:#080;font-style:italic>//output ： 1, 5, 1, 10
+</span></span></span></code></pre></div><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#080;font-style:italic>//例子3
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>var</span> a <span style=color:#0b0;font-weight:700>bool</span> = <span style=color:#a2f;font-weight:700>true</span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>main</span>() {
+</span></span><span style=display:flex><span>    <span style=color:#a2f;font-weight:700>defer</span> <span style=color:#a2f;font-weight:700>func</span>(){
+</span></span><span style=display:flex><span>        fmt.<span style=color:#00a000>Println</span>(<span style=color:#b44>&#34;1&#34;</span>)
+</span></span><span style=display:flex><span>    }()
+</span></span><span style=display:flex><span>    <span style=color:#a2f;font-weight:700>if</span> a <span style=color:#666>==</span> <span style=color:#a2f;font-weight:700>true</span> {
+</span></span><span style=display:flex><span>        fmt.<span style=color:#00a000>Println</span>(<span style=color:#b44>&#34;2&#34;</span>)
+</span></span><span style=display:flex><span>        <span style=color:#a2f;font-weight:700>return</span>
+</span></span><span style=display:flex><span>    }
+</span></span><span style=display:flex><span>    <span style=color:#a2f;font-weight:700>defer</span> <span style=color:#a2f;font-weight:700>func</span>(){
+</span></span><span style=display:flex><span>        fmt.<span style=color:#00a000>Println</span>(<span style=color:#b44>&#34;3&#34;</span>)
+</span></span><span style=display:flex><span>    }()
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span><span style=color:#080;font-style:italic>//output ： 2, 1
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>//分析 ： 关键字后面的函数或者方法想要执行必须先注册，return 之后的 defer 是不能注册的， 也就不能执行后面的函数或方法。
+</span></span></span></code></pre></div><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#080;font-style:italic>//例子4
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>calc</span>(index <span style=color:#0b0;font-weight:700>string</span>, a, b <span style=color:#0b0;font-weight:700>int</span>) <span style=color:#0b0;font-weight:700>int</span> {
+</span></span><span style=display:flex><span>    ret <span style=color:#666>:=</span> a <span style=color:#666>+</span> b
+</span></span><span style=display:flex><span>    fmt.<span style=color:#00a000>Println</span>(index, a, b, ret)
+</span></span><span style=display:flex><span>    <span style=color:#a2f;font-weight:700>return</span> ret
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>main</span>() {
+</span></span><span style=display:flex><span>    a <span style=color:#666>:=</span> <span style=color:#666>1</span>
+</span></span><span style=display:flex><span>    b <span style=color:#666>:=</span> <span style=color:#666>2</span>
+</span></span><span style=display:flex><span>    <span style=color:#a2f;font-weight:700>defer</span> <span style=color:#00a000>calc</span>(<span style=color:#b44>&#34;1&#34;</span>, a, <span style=color:#00a000>calc</span>(<span style=color:#b44>&#34;10&#34;</span>, a, b)) 
+</span></span><span style=display:flex><span>    a = <span style=color:#666>0</span>
+</span></span><span style=display:flex><span>    <span style=color:#a2f;font-weight:700>defer</span> <span style=color:#00a000>calc</span>(<span style=color:#b44>&#34;2&#34;</span>, a, <span style=color:#00a000>calc</span>(<span style=color:#b44>&#34;20&#34;</span>, a, b))
+</span></span><span style=display:flex><span>    b = <span style=color:#666>1</span> 
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span><span style=color:#080;font-style:italic>//output : 10 1 2 3
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>//         20 0 2 2
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>//         2 0 2 2
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>//         1 1 3 4
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>//分析： 不管代码顺序如何，defer-calc-func中参数b必须先计算，故会在运行到第一个defer时，执行calc(&#34;10&#34;,a,b)输出：10 1 2 3得到值3，将cal(&#34;1&#34;,1,3)存放到延后执执行函数队列中。同理运行到第二个defer也是一样。
+</span></span></span></code></pre></div><h3 id=多重赋值>多重赋值</h3><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>main</span>() {
+</span></span><span style=display:flex><span>    i <span style=color:#666>:=</span> <span style=color:#666>1</span>
+</span></span><span style=display:flex><span>    s <span style=color:#666>:=</span> []<span style=color:#0b0;font-weight:700>string</span>{<span style=color:#b44>&#34;A&#34;</span>, <span style=color:#b44>&#34;B&#34;</span>, <span style=color:#b44>&#34;C&#34;</span>}
+</span></span><span style=display:flex><span>    i, s[i<span style=color:#666>-</span><span style=color:#666>1</span>] = <span style=color:#666>2</span>, <span style=color:#b44>&#34;Z&#34;</span> <span style=color:#080;font-style:italic>// 先计算 s[i-1] 最后变成 i, s[0] = 2, “Z”
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>    fmt.<span style=color:#00a000>Printf</span>(<span style=color:#b44>&#34;s: %v \n&#34;</span>, s)
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span><span style=color:#080;font-style:italic>//output ： [Z,B,C]
+</span></span></span></code></pre></div><p>多重赋值分为两个步骤，有先后顺序：</p><ul><li>计算等号左边的索引表达式和取址表达式，接着计算等号右边的表达式</li><li>赋值</li></ul><h3 id=nil-可以用作-interfacefunctionpointermapslice-和-channel-的空值>nil 可以用作 interface、function、pointer、map、slice 和 channel 的“空值”</h3><p>​ nil 可以用作 interface、function、pointer、map、slice 和 channel 的“空值”</p><h3 id=reference>Reference</h3><ul><li><a href=https://draveness.me/golang/docs/part3-runtime/ch07-memory/golang-memory-allocator/ target=_blank rel=noopener>https://draveness.me/golang/docs/part3-runtime/ch07-memory/golang-memory-allocator/</a></li><li><a href=https://golang.design/go-questions/interface/receiver/ target=_blank rel=noopener>https://golang.design/go-questions/interface/receiver/</a></li><li><a href=https://github.com/LeoYang90/Golang-Internal-Notes target=_blank rel=noopener>https://github.com/LeoYang90/Golang-Internal-Notes</a></li><li><a href=https://www.topgoer.cn/docs/gomianshiti target=_blank rel=noopener>https://www.topgoer.cn/docs/gomianshiti</a></li></ul></div><footer class=post-footer></footer></article></section></div></div><div class=sidebar-toggle><div class=sidebar-toggle-line-wrap><span class="sidebar-toggle-line sidebar-toggle-line-first"></span>
+<span class="sidebar-toggle-line sidebar-toggle-line-middle"></span>
+<span class="sidebar-toggle-line sidebar-toggle-line-last"></span></div></div><aside id=sidebar class=sidebar><div class=sidebar-inner><ul class="sidebar-nav motion-element"><li class="sidebar-nav-toc sidebar-nav-active" data-target=post-toc-wrap>文章目录</li><li class=sidebar-nav-overview data-target=site-overview>站点概览</li></ul><section class="site-overview sidebar-panel"><div class="site-author motion-element" itemprop=author itemscope itemtype=http://schema.org/Person><img class=site-author-image itemprop=image src=/img/avatar.jpeg alt=Canon><p class=site-author-name itemprop=name>Canon</p><p class="site-description motion-element" itemprop=description>慢慢走, 慢慢来!</p></div><nav class="site-state motion-element"><div class="site-state-item site-state-posts"><a href=/post/><span class=site-state-item-count>48</span>
+<span class=site-state-item-name>日志</span></a></div><div class="site-state-item site-state-categories"><a href=/categories/><span class=site-state-item-count>14</span>
+<span class=site-state-item-name>分类</span></a></div><div class="site-state-item site-state-tags"><a href=/tags/><span class=site-state-item-count>12</span>
+<span class=site-state-item-name>标签</span></a></div></nav><div class="links-of-author motion-element"><span class=links-of-author-item><a href=https://github.com/MrVWY target=_blank title=GitHub><i class="fa fa-fw fa-github"></i>
+GitHub</a></span>
+<span class=links-of-author-item><a href=https://github.com/MrVWY/Learn-Note target=_blank title=笔记><i class="fa fa-fw fa-globe"></i>
+笔记</a></span></div><div class="tagcloud-of-blogroll motion-element tagcloud-of-blogroll-inline"><div class=tagcloud-of-blogroll-title><i class="fa fa-fw fa-tags"></i>
+标签云</div><ul class=tagcloud-of-blogroll-list><li class=tagcloud-of-blogroll-item><a href=/tags/go>Go
+<sup>20</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/%E8%B7%AF%E7%94%B1%E4%BA%A4%E6%8D%A2>路由交换
+<sup>6</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/leetcode>Leetcode
+<sup>4</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/linux>Linux
+<sup>4</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/tcp/ip>Tcp IP
+<sup>3</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/c>C
+<sup>1</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/js>Js
+<sup>1</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/network>Network
+<sup>1</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/nginx>Nginx
+<sup>1</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/tcp/iplinux>Tcp iplinux
+<sup>1</sup></a></li></ul></div></section><section class="post-toc-wrap motion-element sidebar-panel sidebar-panel-active"><div class=post-toc><div class=post-toc-content><nav id=TableOfContents><ul><li><ul><li><a href=#gc>GC</a></li><li><a href=#gpm-调度-和-csp-模型>GPM 调度 和 CSP 模型</a></li><li><a href=#channel>Channel</a></li><li><a href=#context>Context</a></li><li><a href=#make-和-new>make 和 new</a></li><li><a href=#值接收者和指针接收者的区别>值接收者和指针接收者的区别</a></li><li><a href=#接口的动态类型和动态值>接口的动态类型和动态值</a></li><li><a href=#反射>反射</a></li><li><a href=#断言>断言</a></li><li><a href=#内存模型>内存模型</a></li><li><a href=#map>map</a></li><li><a href=#值传递和引用传递>值传递和引用传递</a></li><li><a href=#内存对齐>内存对齐</a></li><li><a href=#rune-类型>rune 类型</a></li><li><a href=#defer和return执行先后顺序>defer和return执行先后顺序</a></li><li><a href=#多重赋值>多重赋值</a></li><li><a href=#nil-可以用作-interfacefunctionpointermapslice-和-channel-的空值>nil 可以用作 interface、function、pointer、map、slice 和 channel 的“空值”</a></li><li><a href=#reference>Reference</a></li></ul></li></ul></nav></div></div></section></div></aside></div></main><footer id=footer class=footer><div class=footer-inner><div class=copyright><span class=copyright-year>&copy; 2021 - 2023</span>
+<span class=with-love><i class="fa fa-heart"></i></span>
+<span class=copyright-author>Canon Blog</span></div><div class=vistor-info><script async src=//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js></script>
+<span class=site-uv><i class="fa fa-user"></i>
+<span class=busuanzi-value id=busuanzi_value_site_uv></span></span>
+<span class=separator-line>/</span>
+<span class=site-pv><i class="fa fa-eye"></i>
+<span class=busuanzi-value id=busuanzi_value_site_pv></span></span></div><div class=license-info><span class=storage-info>Storage by
+<a href style=font-weight:700 target=_blank></a></span>
+<span class=separator-line>/</span>
+<span class=license-num><a href target=_blank></a></span></div></div></footer><div class=back-to-top><i class="fa fa-arrow-up"></i>
+<span id=scrollpercent><span>0</span>%</span></div></div><script type=text/javascript src=//unpkg.com/jquery@2.1.4/dist/jquery.min.js></script>
+<script type=text/javascript src=/js/search.js></script>
+<script type=text/javascript src=/js/affix.js></script>
+<script type=text/javascript>function detectIE(){var e=window.navigator.userAgent,t=e.indexOf("MSIE "),n=e.indexOf("Trident/"),s=e.indexOf("Edge/");return t>0||n>0||s>0?-1:1}function getCntViewHeight(){var t=$("#content").height(),e=$(window).height(),n=t>e?t-e:$(document).height()-e;return n}function getScrollbarWidth(){var e=$("<div />").addClass("scrollbar-measure").prependTo("body"),t=e[0],n=t.offsetWidth-t.clientWidth;return e.remove(),n}function registerBackTop(){var t=50,e=$(".back-to-top");$(window).on("scroll",function(){e.toggleClass("back-to-top-on",window.pageYOffset>t);var s=$(window).scrollTop(),o=getCntViewHeight(),i=s/o,n=Math.round(i*100),a=n>100?100:n;$("#scrollpercent>span").html(a)}),e.on("click",function(){$("html,body").animate({scrollTop:0,screenLeft:0},800)})}function initScrollSpy(){var e=".post-toc",s=$(e),t=".active-current";s.on("activate.bs.scrollspy",function(){var t=$(e+" .active").last();n(),t.addClass("active-current")}).on("clear.bs.scrollspy",n),$("body").scrollspy({target:e});function n(){$(e+" "+t).removeClass(t.substring(1))}}function initAffix(){var e=$(".header-inner").height(),t=parseInt($(".footer").outerHeight(!0),10),n=e+10;$(".sidebar-inner").affix({offset:{top:n,bottom:t}})}function initTOCDimension(){$(window).on("resize",function(){e&&clearTimeout(e),e=setTimeout(function(){var e=document.body.clientHeight-100;updateTOCHeight(e)},0)}),updateTOCHeight(document.body.clientHeight-100);var e,t=getScrollbarWidth();$(".post-toc").css("width","calc(100% + "+t+"px)")}function updateTOCHeight(e){e=e||"auto",$(".post-toc").css("max-height",e)}$(function(){var e,t,n,s,o=$(".header-inner").height()+10;$("#sidebar").css({"margin-top":o}).show(),t=parseInt($("#sidebar").css("margin-top")),n=parseInt($(".sidebar-inner").css("height")),e=t+n,s=$(".content-wrap").height(),s<e&&$(".content-wrap").css("min-height",e),$(".site-nav-toggle").on("click",function(){var e=$(".site-nav"),o=$(".toggle"),t="site-nav-on",i="toggle-close",n=e.hasClass(t),a=n?"slideUp":"slideDown",s=n?"removeClass":"addClass";e.stop()[a]("normal",function(){e[s](t),o[s](i)})}),registerBackTop(),initAffix(),initTOCDimension(),$(".sidebar-nav-toc").click(function(){$(this).addClass("sidebar-nav-active"),$(this).next().removeClass("sidebar-nav-active"),$("."+$(this).next().attr("data-target")).toggle(500),$("."+$(this).attr("data-target")).toggle(500)}),$(".sidebar-nav-overview").click(function(){$(this).addClass("sidebar-nav-active"),$(this).prev().removeClass("sidebar-nav-active"),$("."+$(this).prev().attr("data-target")).toggle(500),$("."+$(this).attr("data-target")).toggle(500)})})</script><script src=//unpkg.com/imageviewer@1.1.0/dist/viewer.min.js></script>
+<script type=text/javascript>$(function(){$(".post-body").viewer()})</script><script src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_SVG"></script>
+<script type=text/javascript src="//s7.addthis.com/js/300/addthis_widget.js#pubid=Your%20AddthisId"></script>
+<script>(function(){var t,e=document.createElement("script"),n=window.location.protocol.split(":")[0];n==="https"?e.src="https://zz.bdstatic.com/linksubmit/push.js":e.src="http://push.zhanzhang.baidu.com/push.js",t=document.getElementsByTagName("script")[0],t.parentNode.insertBefore(e,t)})()</script></body></html>

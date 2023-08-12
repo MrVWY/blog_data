@@ -1,0 +1,192 @@
+<!doctype html><html lang=zh-cn dir=zh><head><meta charset=utf-8><meta http-equiv=x-ua-compatible content="IE=edge,chrome=1"><meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1"><meta http-equiv=content-security-policy content="upgrade-insecure-requests"><title>Channel in Go - Canon Blog</title><meta name=keywords content="博客,程序员,读书,笔记,技术,分享"><meta name=author content="Canon"><meta property="og:title" content="Channel in Go"><meta property="og:site_name" content="Canon Blog"><meta property="og:image" content="/img/author.jpg"><meta name=title content="Channel in Go - Canon Blog"><meta name=description content="欢迎来到Canon的博客"><link rel="shortcut icon" href=/img/favicon.ico><link href=//unpkg.com/font-awesome@4.7.0/css/font-awesome.min.css rel=stylesheet type=text/css><link href=//unpkg.com/imageviewer@1.1.0/dist/viewer.min.css rel=stylesheet><link href=/css/main.css rel=stylesheet type=text/css><link href=/css/syntax.css rel=stylesheet type=text/css></head><body itemscope itemtype=http://schema.org/WebPage lang=zh-Hans><div class="container one-collumn sidebar-position-left page-home"><div class=headband></div><header id=header class=header itemscope itemtype=http://schema.org/WPHeader><div class=header-inner><div class=site-brand-container><div class=site-nav-toggle><div class=toggle role=button style=opacity:1;top:0><span class=toggle-line></span>
+<span class=toggle-line></span>
+<span class=toggle-line></span></div></div><div class=site-meta><div class=custom-logo-site-title><a href=/ class=brand rel=start><span class=logo-line-before><i></i></span>
+<span class=site-title>Canon Blog</span>
+<span class=logo-line-after><i></i></span></a></div><p class=site-subtitle>记录学习资料!</p></div><div class=site-nav-right><div class="toggle popup-trigger" style=opacity:1;top:0><i class="fa fa-search fa-fw fa-lg"></i></div></div></div><nav class=site-nav><ul id=menu class=menu><li class=menu-item><a href=/ rel=section><i class="menu-item-icon fa fa-fw fa-home"></i><br>首页</a></li><li class="menu-item menu-item-active"><a href=/post rel=section><i class="menu-item-icon fa fa-fw fa-archive"></i><br>归档</a></li><li class="menu-item menu-item-search"><a href=javascript:; class=popup-trigger><i class="menu-item-icon fa fa-search fa-fw"></i><br>搜索</a></li></ul><div class=site-search><div class="popup search-popup local-search-popup"><div class="local-search-header clearfix"><span class=search-icon><i class="fa fa-search"></i></span>
+<span class=popup-btn-close><i class="fa fa-times-circle"></i></span><div class=local-search-input-wrapper><input autocomplete=off placeholder=搜索关键字... spellcheck=false type=text id=local-search-input autocapitalize=none autocorrect=off></div></div><div id=local-search-result></div></div></div></nav></div></header><main id=main class=main><div class=main-inner><div class=content-wrap><div id=content class=content><section id=posts class=posts-expand><article class="post post-type-normal" itemscope itemtype=http://schema.org/Article><header class=post-header><h1 class=post-title itemprop="name headline" style=font-weight:700><a class=post-title-link href=/post/go-channel-/ itemprop=url>Channel in Go</a></h1></header><div class=post-body itemprop=articleBody><h3 id=chan结构>chan结构</h3><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#a2f;font-weight:700>type</span> hchan <span style=color:#a2f;font-weight:700>struct</span> {
+</span></span><span style=display:flex><span>   qcount   <span style=color:#0b0;font-weight:700>uint</span>           <span style=color:#080;font-style:italic>// buffer的总数据量
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   dataqsiz <span style=color:#0b0;font-weight:700>uint</span>           <span style=color:#080;font-style:italic>// circular(圆) queue的大小（可以理解为环形链表）
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   buf      unsafe.Pointer <span style=color:#080;font-style:italic>// 一个指向buffer某个数据的指针
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   elemsize <span style=color:#0b0;font-weight:700>uint16</span>
+</span></span><span style=display:flex><span>   closed   <span style=color:#0b0;font-weight:700>uint32</span>
+</span></span><span style=display:flex><span>   elemtype <span style=color:#666>*</span>_type <span style=color:#080;font-style:italic>// element type
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   sendx    <span style=color:#0b0;font-weight:700>uint</span>   <span style=color:#080;font-style:italic>// 已发送的索引位置的下标
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   recvx    <span style=color:#0b0;font-weight:700>uint</span>   <span style=color:#080;font-style:italic>// 已接受的索引位置的下标
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   recvq    waitq  <span style=color:#080;font-style:italic>// 接收队列
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   sendq    waitq  <span style=color:#080;font-style:italic>// 发送队列
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   lock mutex
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>type</span> waitq <span style=color:#a2f;font-weight:700>struct</span> {
+</span></span><span style=display:flex><span>   first <span style=color:#666>*</span>sudog <span style=color:#080;font-style:italic>//sudog表示一个在等待队列的g
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>   last  <span style=color:#666>*</span>sudog
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><h3 id=makechan>makechan</h3><p>makechan里面主要是对hchan、buffer等一些状态检测和调用mallocgc函数分配内存等。不过值得主要的地方是最后return的是一个*hchan。因此在平常使用channel是依据指针操作的，而不是值的复制。</p><h3 id=chan-send>chan send</h3><h4 id=初始>初始</h4><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>chansend1</span>(c <span style=color:#666>*</span>hchan, elem unsafe.Pointer) {
+</span></span><span style=display:flex><span>   <span style=color:#00a000>chansend</span>(c, elem, <span style=color:#666>**</span><span style=color:#a2f;font-weight:700>true</span><span style=color:#666>**</span>, <span style=color:#00a000>getcallerpc</span>())
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><p>这里主要得知block字段都是以true值向下转递。</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>chansend</span>(c <span style=color:#666>*</span>hchan, ep unsafe.Pointer, block <span style=color:#0b0;font-weight:700>bool</span>, callerpc <span style=color:#0b0;font-weight:700>uintptr</span>) <span style=color:#0b0;font-weight:700>bool</span> {}
+</span></span></code></pre></div><p>c表示某个chan，ep表示发送数据的地址，block表示是否为阻塞，callerpc表示调用地址，通过getcallerpc函数获取，返回的是一个程序的PC地址。同时其还有一个孪生函数getcallersp，返回的是一个函数的SP地址。</p><h4 id=判断状态>判断状态</h4><p>1、如果c为nil，是非阻塞状态直接返回false。否则通过gopark函数去永远关闭goroutine。这里提醒一句在golang中基本的channel的读写都是阻塞的。如果要非阻塞，可以在select中加入defalut语句。</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#a2f;font-weight:700>if</span> c <span style=color:#666>==</span> <span style=color:#a2f;font-weight:700>nil</span> {
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> !block {
+</span></span><span style=display:flex><span>      <span style=color:#a2f;font-weight:700>return</span> <span style=color:#a2f;font-weight:700>false</span>
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   <span style=color:#00a000>gopark</span>(<span style=color:#a2f;font-weight:700>nil</span>, <span style=color:#a2f;font-weight:700>nil</span>, waitReasonChanSendNilChan, traceEvGoStop, <span style=color:#666>2</span>)
+</span></span><span style=display:flex><span>   <span style=color:#00a000>throw</span>(<span style=color:#b44>&#34;unreachable&#34;</span>)
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><p>2、这里有点绕。个人见解为，当c不为nil和非阻塞时，要判断当前channel是否为关闭状态，因此channel可以在一瞬间就关闭了。同时如果buffer中没有数据和没有接收者就返回false。</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#a2f;font-weight:700>if</span> !block <span style=color:#666>&amp;&amp;</span> c.closed <span style=color:#666>==</span> <span style=color:#666>0</span> <span style=color:#666>&amp;&amp;</span> ((c.dataqsiz <span style=color:#666>==</span> <span style=color:#666>0</span> <span style=color:#666>&amp;&amp;</span> c.recvq.first <span style=color:#666>==</span> <span style=color:#a2f;font-weight:700>nil</span>) 
+</span></span><span style=display:flex><span>   (c.dataqsiz &gt; <span style=color:#666>0</span> <span style=color:#666>&amp;&amp;</span> c.qcount <span style=color:#666>==</span> c.dataqsiz)) {
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>return</span> <span style=color:#a2f;font-weight:700>false</span>
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><h4 id=加锁添加数据>加锁、添加数据</h4><p>3、加锁，判断channel是否关闭。这里结合第2步可得知，c.closed = 0 表示该channel没有被关闭，而c.closed != 0 表示channel已经被关闭。</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#00a000>lock</span>(<span style=color:#666>&amp;</span>c.lock)
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>if</span> c.closed <span style=color:#666>!=</span> <span style=color:#666>0</span> {
+</span></span><span style=display:flex><span>   <span style=color:#00a000>unlock</span>(<span style=color:#666>&amp;</span>c.lock)
+</span></span><span style=display:flex><span>   <span style=color:#a2f>panic</span>(<span style=color:#00a000>plainError</span>(<span style=color:#b44>&#34;send on closed channel&#34;</span>))
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><p>4、从接收队列中取出一个接收者通过send函数发送数据</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#a2f;font-weight:700>if</span> sg <span style=color:#666>:=</span> c.recvq.<span style=color:#00a000>dequeue</span>(); sg <span style=color:#666>!=</span> <span style=color:#a2f;font-weight:700>nil</span> {
+</span></span><span style=display:flex><span>   <span style=color:#00a000>send</span>(c, sg, ep, <span style=color:#a2f;font-weight:700>func</span>() { <span style=color:#00a000>unlock</span>(<span style=color:#666>&amp;</span>c.lock) }, <span style=color:#666>3</span>)
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>return</span> <span style=color:#a2f;font-weight:700>true</span>
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>func</span> <span style=color:#00a000>send</span>(c <span style=color:#666>*</span>hchan, sg <span style=color:#666>*</span>sudog, ep unsafe.Pointer, unlockf <span style=color:#a2f;font-weight:700>func</span>(), skip <span style=color:#0b0;font-weight:700>int</span>) {
+</span></span><span style=display:flex><span>   <span style=color:#666>.........</span>
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> sg.elem <span style=color:#666>!=</span> <span style=color:#a2f;font-weight:700>nil</span> {
+</span></span><span style=display:flex><span>      <span style=color:#00a000>sendDirect</span>(c.elemtype, sg, ep)
+</span></span><span style=display:flex><span>      sg.elem = <span style=color:#a2f;font-weight:700>nil</span>
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   gp <span style=color:#666>:=</span> sg.g
+</span></span><span style=display:flex><span>   <span style=color:#00a000>unlockf</span>()
+</span></span><span style=display:flex><span>   gp.param = unsafe.<span style=color:#00a000>Pointer</span>(sg)
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> sg.releasetime <span style=color:#666>!=</span> <span style=color:#666>0</span> {
+</span></span><span style=display:flex><span>      sg.releasetime = <span style=color:#00a000>cputicks</span>()
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   <span style=color:#00a000>goready</span>(gp, skip<span style=color:#666>+</span><span style=color:#666>1</span>)
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><p>先说下send函数的参数，c表示某个channel，sg表示某个goroutine接收者，ep表示要发送的数据，unlockf表示一个解锁channel的函数，skip字面意思是跳跃，具体不清楚，个人感觉是跟内存偏移量之类的相关。 具体流程大致为，先判断sg.elem是否为nil，如果不为nil的话，就sendDirect（重定向）到sg的指定位置，这里很好理解，因此sg代表的是一个goroutine，其在堆栈里面必然含有一定的数据，因此要重定向到其堆栈的空内存块存储。之后就通过goready函数将其唤醒，加入到go的调度中。</p><p>5、向缓冲区添加数据</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#a2f;font-weight:700>if</span> c.qcount &lt; c.dataqsiz {
+</span></span><span style=display:flex><span>   qp <span style=color:#666>:=</span> <span style=color:#00a000>chanbuf</span>(c, c.sendx)
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> raceenabled {
+</span></span><span style=display:flex><span>      <span style=color:#00a000>raceacquire</span>(qp)
+</span></span><span style=display:flex><span>      <span style=color:#00a000>racerelease</span>(qp)
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   <span style=color:#00a000>typedmemmove</span>(c.elemtype, qp, ep)
+</span></span><span style=display:flex><span>   c.sendx<span style=color:#666>++</span>
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> c.sendx <span style=color:#666>==</span> c.dataqsiz {
+</span></span><span style=display:flex><span>      c.sendx = <span style=color:#666>0</span>
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   c.qcount<span style=color:#666>++</span>
+</span></span><span style=display:flex><span>   <span style=color:#00a000>unlock</span>(<span style=color:#666>&amp;</span>c.lock)
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>return</span> <span style=color:#a2f;font-weight:700>true</span>
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><p>6、当缓冲区满时 对于非阻塞channel，直接返回false</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#a2f;font-weight:700>if</span> !block {
+</span></span><span style=display:flex><span>   <span style=color:#00a000>unlock</span>(<span style=color:#666>&amp;</span>c.lock)
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>return</span> <span style=color:#a2f;font-weight:700>false</span>
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>对于阻塞channel<span>，</span>挂起goroutine并将其抽象成sudog放进发送队列中
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>gp <span style=color:#666>:=</span> <span style=color:#00a000>getg</span>()
+</span></span><span style=display:flex><span>mysg <span style=color:#666>:=</span> <span style=color:#00a000>acquireSudog</span>()
+</span></span><span style=display:flex><span>mysg.releasetime = <span style=color:#666>0</span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>if</span> t0 <span style=color:#666>!=</span> <span style=color:#666>0</span> {
+</span></span><span style=display:flex><span>   mysg.releasetime = <span style=color:#666>-</span><span style=color:#666>1</span>
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>mysg.elem = ep
+</span></span><span style=display:flex><span>mysg.waitlink = <span style=color:#a2f;font-weight:700>nil</span>
+</span></span><span style=display:flex><span>mysg.g = gp
+</span></span><span style=display:flex><span>mysg.isSelect = <span style=color:#a2f;font-weight:700>false</span>
+</span></span><span style=display:flex><span>mysg.c = c
+</span></span><span style=display:flex><span>gp.waiting = mysg
+</span></span><span style=display:flex><span>gp.param = <span style=color:#a2f;font-weight:700>nil</span>
+</span></span><span style=display:flex><span><span style=color:#666>**</span>c.sendq.<span style=color:#00a000>enqueue</span>(mysg)<span style=color:#666>**</span>
+</span></span><span style=display:flex><span><span style=color:#00a000>goparkunlock</span>(<span style=color:#666>&amp;</span>c.lock, waitReasonChanSend, traceEvGoBlockSend, <span style=color:#666>3</span>)
+</span></span></code></pre></div><h4 id=标记可达>标记可达</h4><p>7、通过keepAlive函数把发送数据ep标记为可达，防止gc。同时清理工作现场。</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#00a000>KeepAlive</span>(ep)
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// someone woke us up.
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>if</span> mysg <span style=color:#666>!=</span> gp.waiting {
+</span></span><span style=display:flex><span>   <span style=color:#00a000>throw</span>(<span style=color:#b44>&#34;G waiting list is corrupted&#34;</span>)
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>gp.waiting = <span style=color:#a2f;font-weight:700>nil</span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>if</span> gp.param <span style=color:#666>==</span> <span style=color:#a2f;font-weight:700>nil</span> {
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> c.closed <span style=color:#666>==</span> <span style=color:#666>0</span> {
+</span></span><span style=display:flex><span>      <span style=color:#00a000>throw</span>(<span style=color:#b44>&#34;chansend: spurious wakeup&#34;</span>)
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   <span style=color:#a2f>panic</span>(<span style=color:#00a000>plainError</span>(<span style=color:#b44>&#34;send on closed channel&#34;</span>))
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>gp.param = <span style=color:#a2f;font-weight:700>nil</span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>if</span> mysg.releasetime &gt; <span style=color:#666>0</span> {
+</span></span><span style=display:flex><span>   <span style=color:#00a000>blockevent</span>(mysg.releasetime<span style=color:#666>-</span>t0, <span style=color:#666>2</span>)
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>mysg.c = <span style=color:#a2f;font-weight:700>nil</span>
+</span></span><span style=display:flex><span><span style=color:#00a000>releaseSudog</span>(mysg)
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>return</span> <span style=color:#a2f;font-weight:700>true</span>
+</span></span></code></pre></div><h3 id=chan-recv>chan recv</h3><p>代码与chan send流程大致相同但具体细节方面不同，不再多述。</p><h3 id=chan-close>chan close</h3><p>主要是对reader和wirter进行关闭</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-go data-lang=go><span style=display:flex><span><span style=color:#080;font-style:italic>// release all readers
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic>//glist就是存放g的列表
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>for</span> {
+</span></span><span style=display:flex><span>   sg <span style=color:#666>:=</span> c.recvq.<span style=color:#00a000>dequeue</span>()
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> sg <span style=color:#666>==</span> <span style=color:#a2f;font-weight:700>nil</span> {
+</span></span><span style=display:flex><span>      <span style=color:#a2f;font-weight:700>break</span>
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> sg.elem <span style=color:#666>!=</span> <span style=color:#a2f;font-weight:700>nil</span> {
+</span></span><span style=display:flex><span>      <span style=color:#00a000>typedmemclr</span>(c.elemtype, sg.elem)<span style=color:#080;font-style:italic>//这里可能就是对channel还存放的数据进行操作
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>      sg.elem = <span style=color:#a2f;font-weight:700>nil</span>
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> sg.releasetime <span style=color:#666>!=</span> <span style=color:#666>0</span> {
+</span></span><span style=display:flex><span>      sg.releasetime = <span style=color:#00a000>cputicks</span>()
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   gp <span style=color:#666>:=</span> sg.g
+</span></span><span style=display:flex><span>   gp.param = <span style=color:#a2f;font-weight:700>nil</span>
+</span></span><span style=display:flex><span>   glist.<span style=color:#00a000>push</span>(gp)
+</span></span><span style=display:flex><span>}
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#080;font-style:italic>// release all writers (they will panic)
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span><span style=color:#a2f;font-weight:700>for</span> {
+</span></span><span style=display:flex><span>   sg <span style=color:#666>:=</span> c.sendq.<span style=color:#00a000>dequeue</span>()
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> sg <span style=color:#666>==</span> <span style=color:#a2f;font-weight:700>nil</span> {
+</span></span><span style=display:flex><span>      <span style=color:#a2f;font-weight:700>break</span>
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   sg.elem = <span style=color:#a2f;font-weight:700>nil</span>
+</span></span><span style=display:flex><span>   <span style=color:#a2f;font-weight:700>if</span> sg.releasetime <span style=color:#666>!=</span> <span style=color:#666>0</span> {
+</span></span><span style=display:flex><span>      sg.releasetime = <span style=color:#00a000>cputicks</span>()
+</span></span><span style=display:flex><span>   }
+</span></span><span style=display:flex><span>   gp <span style=color:#666>:=</span> sg.g
+</span></span><span style=display:flex><span>   gp.param = <span style=color:#a2f;font-weight:700>nil</span>
+</span></span><span style=display:flex><span>   glist.<span style=color:#00a000>push</span>(gp)
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><p> </p><h3 id=race0go与racego>race0.go与race.go</h3><p>在channel的代码上出现了很多调用race0.go里面的方法，个人百度了一下从官网上找到了相关的解释为这是一个go tool chain。详情请移步<a href=https://blog.golang.org/race-detector target=_blank rel=noopener>这里</a>
+。一般情况下由于raceenabled为false其不会执行里面的函数。</p><h3 id=写屏障>写屏障</h3><p>在channel分别出现了2个不同的写屏障方法分别是typeBitsBulkBarrier()和bulkBarrierPreWrite()。 typeBitsBulkBarrier()：出现在recvDirect()和sendDirect()中，是对每个指针复制到另外一个指针执行写屏障(这方面理解不太清楚，正确理解请自行Google)。个人理解是当接受/发送数据时，当前goroutine正在运行，而GC已经把所用到的对象已经关联起来，如果这时不执行写屏障，那么在下一次GC中所接收/发送的数据就会被清除。 bulkBarrierPreWrite()：出现在closechan()中，对在一定范围的内存中的每个指针执行写屏障。个人理解为当在关闭channel时，如果在channel中还有数据，那么就把它复制到另一块内存中。这也是当关闭管道之后，还能读取数据。</p><h3 id=总结>总结</h3><p>总的来说channel内部结构是一个环形链表和一个接收者/发送者队列所组成。当对其发送或者接收数据时，都触发写屏障将数据复制到对应的goroutine中或者将数据写进channel中。而当channel中的buffer满时或者没有数据给goroutine接收时，这时候会将g抽象成sudog类存放在revc/send队列中，这里面会涉及到goroutine的暂停和唤醒操作。</p></div><footer class=post-footer></footer></article></section></div></div><div class=sidebar-toggle><div class=sidebar-toggle-line-wrap><span class="sidebar-toggle-line sidebar-toggle-line-first"></span>
+<span class="sidebar-toggle-line sidebar-toggle-line-middle"></span>
+<span class="sidebar-toggle-line sidebar-toggle-line-last"></span></div></div><aside id=sidebar class=sidebar><div class=sidebar-inner><ul class="sidebar-nav motion-element"><li class="sidebar-nav-toc sidebar-nav-active" data-target=post-toc-wrap>文章目录</li><li class=sidebar-nav-overview data-target=site-overview>站点概览</li></ul><section class="site-overview sidebar-panel"><div class="site-author motion-element" itemprop=author itemscope itemtype=http://schema.org/Person><img class=site-author-image itemprop=image src=/img/avatar.jpeg alt=Canon><p class=site-author-name itemprop=name>Canon</p><p class="site-description motion-element" itemprop=description>慢慢走, 慢慢来!</p></div><nav class="site-state motion-element"><div class="site-state-item site-state-posts"><a href=/post/><span class=site-state-item-count>48</span>
+<span class=site-state-item-name>日志</span></a></div><div class="site-state-item site-state-categories"><a href=/categories/><span class=site-state-item-count>14</span>
+<span class=site-state-item-name>分类</span></a></div><div class="site-state-item site-state-tags"><a href=/tags/><span class=site-state-item-count>12</span>
+<span class=site-state-item-name>标签</span></a></div></nav><div class="links-of-author motion-element"><span class=links-of-author-item><a href=https://github.com/MrVWY target=_blank title=GitHub><i class="fa fa-fw fa-github"></i>
+GitHub</a></span>
+<span class=links-of-author-item><a href=https://github.com/MrVWY/Learn-Note target=_blank title=笔记><i class="fa fa-fw fa-globe"></i>
+笔记</a></span></div><div class="tagcloud-of-blogroll motion-element tagcloud-of-blogroll-inline"><div class=tagcloud-of-blogroll-title><i class="fa fa-fw fa-tags"></i>
+标签云</div><ul class=tagcloud-of-blogroll-list><li class=tagcloud-of-blogroll-item><a href=/tags/go>Go
+<sup>20</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/%E8%B7%AF%E7%94%B1%E4%BA%A4%E6%8D%A2>路由交换
+<sup>6</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/leetcode>Leetcode
+<sup>4</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/linux>Linux
+<sup>4</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/tcp/ip>Tcp IP
+<sup>3</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/c>C
+<sup>1</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/js>Js
+<sup>1</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/network>Network
+<sup>1</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/nginx>Nginx
+<sup>1</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/tcp/iplinux>Tcp iplinux
+<sup>1</sup></a></li></ul></div></section><section class="post-toc-wrap motion-element sidebar-panel sidebar-panel-active"><div class=post-toc><div class=post-toc-content><nav id=TableOfContents><ul><li><ul><li><a href=#chan结构>chan结构</a></li><li><a href=#makechan>makechan</a></li><li><a href=#chan-send>chan send</a></li><li><a href=#chan-recv>chan recv</a></li><li><a href=#chan-close>chan close</a></li><li><a href=#race0go与racego>race0.go与race.go</a></li><li><a href=#写屏障>写屏障</a></li><li><a href=#总结>总结</a></li></ul></li></ul></nav></div></div></section></div></aside></div></main><footer id=footer class=footer><div class=footer-inner><div class=copyright><span class=copyright-year>&copy; 2021 - 2023</span>
+<span class=with-love><i class="fa fa-heart"></i></span>
+<span class=copyright-author>Canon Blog</span></div><div class=vistor-info><script async src=//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js></script>
+<span class=site-uv><i class="fa fa-user"></i>
+<span class=busuanzi-value id=busuanzi_value_site_uv></span></span>
+<span class=separator-line>/</span>
+<span class=site-pv><i class="fa fa-eye"></i>
+<span class=busuanzi-value id=busuanzi_value_site_pv></span></span></div><div class=license-info><span class=storage-info>Storage by
+<a href style=font-weight:700 target=_blank></a></span>
+<span class=separator-line>/</span>
+<span class=license-num><a href target=_blank></a></span></div></div></footer><div class=back-to-top><i class="fa fa-arrow-up"></i>
+<span id=scrollpercent><span>0</span>%</span></div></div><script type=text/javascript src=//unpkg.com/jquery@2.1.4/dist/jquery.min.js></script>
+<script type=text/javascript src=/js/search.js></script>
+<script type=text/javascript src=/js/affix.js></script>
+<script type=text/javascript>function detectIE(){var e=window.navigator.userAgent,t=e.indexOf("MSIE "),n=e.indexOf("Trident/"),s=e.indexOf("Edge/");return t>0||n>0||s>0?-1:1}function getCntViewHeight(){var t=$("#content").height(),e=$(window).height(),n=t>e?t-e:$(document).height()-e;return n}function getScrollbarWidth(){var e=$("<div />").addClass("scrollbar-measure").prependTo("body"),t=e[0],n=t.offsetWidth-t.clientWidth;return e.remove(),n}function registerBackTop(){var t=50,e=$(".back-to-top");$(window).on("scroll",function(){e.toggleClass("back-to-top-on",window.pageYOffset>t);var s=$(window).scrollTop(),o=getCntViewHeight(),i=s/o,n=Math.round(i*100),a=n>100?100:n;$("#scrollpercent>span").html(a)}),e.on("click",function(){$("html,body").animate({scrollTop:0,screenLeft:0},800)})}function initScrollSpy(){var e=".post-toc",s=$(e),t=".active-current";s.on("activate.bs.scrollspy",function(){var t=$(e+" .active").last();n(),t.addClass("active-current")}).on("clear.bs.scrollspy",n),$("body").scrollspy({target:e});function n(){$(e+" "+t).removeClass(t.substring(1))}}function initAffix(){var e=$(".header-inner").height(),t=parseInt($(".footer").outerHeight(!0),10),n=e+10;$(".sidebar-inner").affix({offset:{top:n,bottom:t}})}function initTOCDimension(){$(window).on("resize",function(){e&&clearTimeout(e),e=setTimeout(function(){var e=document.body.clientHeight-100;updateTOCHeight(e)},0)}),updateTOCHeight(document.body.clientHeight-100);var e,t=getScrollbarWidth();$(".post-toc").css("width","calc(100% + "+t+"px)")}function updateTOCHeight(e){e=e||"auto",$(".post-toc").css("max-height",e)}$(function(){var e,t,n,s,o=$(".header-inner").height()+10;$("#sidebar").css({"margin-top":o}).show(),t=parseInt($("#sidebar").css("margin-top")),n=parseInt($(".sidebar-inner").css("height")),e=t+n,s=$(".content-wrap").height(),s<e&&$(".content-wrap").css("min-height",e),$(".site-nav-toggle").on("click",function(){var e=$(".site-nav"),o=$(".toggle"),t="site-nav-on",i="toggle-close",n=e.hasClass(t),a=n?"slideUp":"slideDown",s=n?"removeClass":"addClass";e.stop()[a]("normal",function(){e[s](t),o[s](i)})}),registerBackTop(),initAffix(),initTOCDimension(),$(".sidebar-nav-toc").click(function(){$(this).addClass("sidebar-nav-active"),$(this).next().removeClass("sidebar-nav-active"),$("."+$(this).next().attr("data-target")).toggle(500),$("."+$(this).attr("data-target")).toggle(500)}),$(".sidebar-nav-overview").click(function(){$(this).addClass("sidebar-nav-active"),$(this).prev().removeClass("sidebar-nav-active"),$("."+$(this).prev().attr("data-target")).toggle(500),$("."+$(this).attr("data-target")).toggle(500)})})</script><script src=//unpkg.com/imageviewer@1.1.0/dist/viewer.min.js></script>
+<script type=text/javascript>$(function(){$(".post-body").viewer()})</script><script src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_SVG"></script>
+<script type=text/javascript src="//s7.addthis.com/js/300/addthis_widget.js#pubid=Your%20AddthisId"></script>
+<script>(function(){var t,e=document.createElement("script"),n=window.location.protocol.split(":")[0];n==="https"?e.src="https://zz.bdstatic.com/linksubmit/push.js":e.src="http://push.zhanzhang.baidu.com/push.js",t=document.getElementsByTagName("script")[0],t.parentNode.insertBefore(e,t)})()</script></body></html>

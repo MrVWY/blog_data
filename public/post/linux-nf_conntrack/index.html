@@ -1,0 +1,120 @@
+<!doctype html><html lang=zh-cn dir=zh><head><meta charset=utf-8><meta http-equiv=x-ua-compatible content="IE=edge,chrome=1"><meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1"><meta http-equiv=content-security-policy content="upgrade-insecure-requests"><title>linux nf_conntrack - Canon Blog</title><meta name=keywords content="博客,程序员,读书,笔记,技术,分享"><meta name=author content="Canon"><meta property="og:title" content="linux nf_conntrack"><meta property="og:site_name" content="Canon Blog"><meta property="og:image" content="/img/author.jpg"><meta name=title content="linux nf_conntrack - Canon Blog"><meta name=description content="欢迎来到Canon的博客"><link rel="shortcut icon" href=/img/favicon.ico><link href=//unpkg.com/font-awesome@4.7.0/css/font-awesome.min.css rel=stylesheet type=text/css><link href=//unpkg.com/imageviewer@1.1.0/dist/viewer.min.css rel=stylesheet><link href=/css/main.css rel=stylesheet type=text/css><link href=/css/syntax.css rel=stylesheet type=text/css></head><body itemscope itemtype=http://schema.org/WebPage lang=zh-Hans><div class="container one-collumn sidebar-position-left page-home"><div class=headband></div><header id=header class=header itemscope itemtype=http://schema.org/WPHeader><div class=header-inner><div class=site-brand-container><div class=site-nav-toggle><div class=toggle role=button style=opacity:1;top:0><span class=toggle-line></span>
+<span class=toggle-line></span>
+<span class=toggle-line></span></div></div><div class=site-meta><div class=custom-logo-site-title><a href=/ class=brand rel=start><span class=logo-line-before><i></i></span>
+<span class=site-title>Canon Blog</span>
+<span class=logo-line-after><i></i></span></a></div><p class=site-subtitle>记录学习资料!</p></div><div class=site-nav-right><div class="toggle popup-trigger" style=opacity:1;top:0><i class="fa fa-search fa-fw fa-lg"></i></div></div></div><nav class=site-nav><ul id=menu class=menu><li class=menu-item><a href=/ rel=section><i class="menu-item-icon fa fa-fw fa-home"></i><br>首页</a></li><li class="menu-item menu-item-active"><a href=/post rel=section><i class="menu-item-icon fa fa-fw fa-archive"></i><br>归档</a></li><li class="menu-item menu-item-search"><a href=javascript:; class=popup-trigger><i class="menu-item-icon fa fa-search fa-fw"></i><br>搜索</a></li></ul><div class=site-search><div class="popup search-popup local-search-popup"><div class="local-search-header clearfix"><span class=search-icon><i class="fa fa-search"></i></span>
+<span class=popup-btn-close><i class="fa fa-times-circle"></i></span><div class=local-search-input-wrapper><input autocomplete=off placeholder=搜索关键字... spellcheck=false type=text id=local-search-input autocapitalize=none autocorrect=off></div></div><div id=local-search-result></div></div></div></nav></div></header><main id=main class=main><div class=main-inner><div class=content-wrap><div id=content class=content><section id=posts class=posts-expand><article class="post post-type-normal" itemscope itemtype=http://schema.org/Article><header class=post-header><h1 class=post-title itemprop="name headline" style=font-weight:700><a class=post-title-link href=/post/linux-nf_conntrack/ itemprop=url>linux nf_conntrack</a></h1></header><div class=post-body itemprop=articleBody><p>nf_conntrack是一个内核模块，其用于跟踪一个连接的状态。</p><h4 id=为什么需要跟踪连接的状态>为什么需要跟踪连接的状态？</h4><p>nf_conntrack允许内核”审查”通过此处的所有网络数据包，并能识别出此数据包属于哪条连接。因此，连接跟踪机制使内核能够跟踪并记录通过此处的所有网络连接及其状态。</p><p>结合Iptables使用，这条 INPUT 规则用于放行 80 端口上的状态为 NEW 的连接上的包。</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-fallback data-lang=fallback><span style=display:flex><span>iptables -A INPUT -p tcp -m state --state NEW -m tcp --dport 80 -j ACCEPT
+</span></span></code></pre></div><h4 id=状态>状态</h4><ul><li><p><code>New</code>：匹配连接的第一个包（分组对应的连接在两个方向上都没有进行过分组传输）。意思就是，iptables从连接跟踪表中查到此包是某连接的第一个包。判断此包是某连接的第一个包是依据conntrack当前”只看到一个方向数据包”([UNREPLIED])，不关联特定协议，因此NEW并不单指tcp连接的SYN包</p></li><li><p><code>Established</code>：匹配连接的响应包及后续的包。意思是，iptables从连接跟踪表中查到此包是属于一个已经收到响应的连接(即没有[UNREPLIED]字段)。因此在iptables状态中，只要发送并接到响应，连接就认为是Established的了。这个特点使iptables可以控制由谁发起的连接才可以通过，比如A与B通信，A发给B数据包属于NEW状态，B回复给A的数据包就变为Established状态。ICMP的错误和重定向等信息包也被看作是Established，只要它们是我们所发出的信息的应答</p></li><li><p><code>Related</code>：匹配那些属于Related连接的包，这句话说了跟没说一样。Related状态有点复杂，当一个连接与另一个已经是Established的连接有关时，这个连接就被认为是Related。这意味着，一个连接要想成为Related，必须首先有一个已经是Established的连接存在。这个Established连接再产生一个主连接之外的新连接，这个新连接就是Related状态了，当然首先Conntrack模块要能”读懂”它是Related。拿ftp来说，FTP数据传输连接就是Related与先前已建立的FTP控制连接，还有通过IRC的DCC连接。有了Related这个状态，ICMP错误消息、FTP传输、DCC等才能穿过防火墙正常工作。有些依赖此机制的TCP协议和UDP协议非常复杂，他们的连接被封装在其它的TCP或UDP包的数据部分(可以了解下overlay/vxlan/gre)，这使得Conntrack需要借助其它辅助模块才能正确”读懂”这些复杂数据包，比如nf_conntrack_ftp这个辅助模块</p></li><li><p><code>Invalid</code>：匹配那些无法识别或没有任何状态的数据包。这可能是由于系统内存不足或收到不属于任何已知连接的ICMP错误消息。一般情况下我们应该DROP此类状态的包</p></li><li><p><code>Untracked</code>：状态比较简单，它匹配那些带有NOTRACK标签的数据包。需要注意的一点是，如果你在raw表中对某些数据包设置有NOTRACK标签，那上面的4种状态将无法匹配这样的数据包，因此你需要单独考虑NOTRACK包的放行规则</p></li></ul><h4 id=如何存储连接状态>如何存储连接状态</h4><p>nf_conntrack 主要利用hash来存储其跟踪的连接</p><ul><li><p>源码参考连接</p><p><a href=https://code.woboq.org/linux/linux/net/netfilter/nf_conntrack_core.c.html target=_blank rel=noopener>https://code.woboq.org/linux/linux/net/netfilter/nf_conntrack_core.c.html</a></p></li></ul><h5 id=nf_conntrack_tuple>nf_conntrack_tuple</h5><ul><li>主要存储src和dst</li><li>通过下面源码，可以看出其主要支持tcp、udp、icmp、dccp、sctp、gre (具体看最新源码)</li></ul><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-fallback data-lang=fallback><span style=display:flex><span>struct nf_conntrack_tuple {
+</span></span><span style=display:flex><span>                                                                         {
+</span></span><span style=display:flex><span>									 { union nf_inet_addr u3; -------| __be32  ip;
+</span></span><span style=display:flex><span>									 |							   { ..........
+</span></span><span style=display:flex><span>	struct nf_conntrack_man src;  ------|                                     { struct { __be16 port; } tcp
+</span></span><span style=display:flex><span>									 | union nf_conntrack_man_proto u;-----| struct { __be16 port; } udp
+</span></span><span style=display:flex><span>									 |                                     | struct { __be16 port; } icmp
+</span></span><span style=display:flex><span>									 |                                     | struct { __be16 port; } dccp
+</span></span><span style=display:flex><span>									 |                                     | struct { __be16 port; } sctp
+</span></span><span style=display:flex><span>									 |                                     { struct { __be16 port; } gre
+</span></span><span style=display:flex><span>									 { u_int16_t l3num; /* Layer 3 protocol */ 
+</span></span><span style=display:flex><span>	/* These are the parts of the tuple which are fixed. */
+</span></span><span style=display:flex><span>	struct {
+</span></span><span style=display:flex><span>		union nf_inet_addr u3;
+</span></span><span style=display:flex><span>		union {
+</span></span><span style=display:flex><span>			/* Add other protocols here. */
+</span></span><span style=display:flex><span>			__be16 all;
+</span></span><span style=display:flex><span>			struct {
+</span></span><span style=display:flex><span>				__be16 port;
+</span></span><span style=display:flex><span>			} tcp;
+</span></span><span style=display:flex><span>			struct {
+</span></span><span style=display:flex><span>				__be16 port;
+</span></span><span style=display:flex><span>			} udp;
+</span></span><span style=display:flex><span>			struct {
+</span></span><span style=display:flex><span>				u_int8_t type, code;
+</span></span><span style=display:flex><span>			} icmp;
+</span></span><span style=display:flex><span>			struct {
+</span></span><span style=display:flex><span>				__be16 port;
+</span></span><span style=display:flex><span>			} dccp;
+</span></span><span style=display:flex><span>			struct {
+</span></span><span style=display:flex><span>				__be16 port;
+</span></span><span style=display:flex><span>			} sctp;
+</span></span><span style=display:flex><span>			struct {
+</span></span><span style=display:flex><span>				__be16 key;
+</span></span><span style=display:flex><span>			} gre;
+</span></span><span style=display:flex><span>		} u;
+</span></span><span style=display:flex><span>		/* The protocol. */
+</span></span><span style=display:flex><span>		u_int8_t protonum;
+</span></span><span style=display:flex><span>		/* The direction (for tuplehash) */
+</span></span><span style=display:flex><span>		u_int8_t dir;
+</span></span><span style=display:flex><span>	} dst;
+</span></span><span style=display:flex><span>};
+</span></span></code></pre></div><h5 id=hash_conntrack_raw函数>hash_conntrack_raw函数</h5><p>利用 Tuple 的src、dst字段来计算哈希</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-fallback data-lang=fallback><span style=display:flex><span>static u32 hash_conntrack_raw(const struct nf_conntrack_tuple *tuple, const struct net *net)
+</span></span><span style=display:flex><span>{
+</span></span><span style=display:flex><span>	unsigned int n;
+</span></span><span style=display:flex><span>	u32 seed;
+</span></span><span style=display:flex><span>	get_random_once(&amp;nf_conntrack_hash_rnd, sizeof(nf_conntrack_hash_rnd));
+</span></span><span style=display:flex><span>	/* The direction must be ignored, so we hash everything up to the
+</span></span><span style=display:flex><span>	 * destination ports (which is a multiple of 4) and treat the last
+</span></span><span style=display:flex><span>	 * three bytes manually.
+</span></span><span style=display:flex><span>	 */
+</span></span><span style=display:flex><span>	seed = nf_conntrack_hash_rnd ^ net_hash_mix(net);
+</span></span><span style=display:flex><span>	n = ( sizeof( tuple-&gt;src ) + sizeof( tuple-&gt;dst.u3 ) ) / sizeof(u32);
+</span></span><span style=display:flex><span>	return jhash2((u32 *)tuple, n, seed ^ (((__force __u16)tuple-&gt;dst.u.all &lt;&lt; 16) |
+</span></span><span style=display:flex><span>		      tuple-&gt;dst.protonum));
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><p>因此当需要查找数据包是属于哪个连接，可以通过计算hash值去hash表寻找是否存有。</p><h4 id=常用cmd>常用Cmd</h4><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-fallback data-lang=fallback><span style=display:flex><span>查看nf_conntrack表当前连接数    
+</span></span><span style=display:flex><span>cat /proc/sys/net/netfilter/nf_conntrack_count       
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>查看nf_conntrack表最大连接数  
+</span></span><span style=display:flex><span>cat /proc/sys/net/netfilter/nf_conntrack_max    
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>通过dmesg可以查看nf_conntrack的状况：
+</span></span><span style=display:flex><span>//小心nf_conntranck : table full, dropping packet
+</span></span><span style=display:flex><span>dmesg |grep nf_conntrack
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>查看存储conntrack条目的哈希表大小,此为只读文件
+</span></span><span style=display:flex><span>cat /proc/sys/net/netfilter/nf_conntrack_buckets
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>查看nf_conntrack的TCP连接记录时间
+</span></span><span style=display:flex><span>cat /proc/sys/net/netfilter/nf_conntrack_tcp_timeout_established
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>通过内核参数查看命令，查看所有参数配置
+</span></span><span style=display:flex><span>sysctl -a | grep nf_conntrac
+</span></span></code></pre></div><h4 id=iptables使用>Iptables使用</h4><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-fallback data-lang=fallback><span style=display:flex><span>iptables -A INPUT -p tcp -m state --state (NEW,ESTABLISHED,RELATED,INVALID) -m tcp --dport 80 -j ACCEPT
+</span></span></code></pre></div><h4 id=相关参数>相关参数</h4><p>详见：https://www.kernel.org/doc/Documentation/networking/nf_conntrack-sysctl.txt</p><ul><li>nf_conntrack_max：连接跟踪表的大小，
+根据wiki上的计算公式 CONNTRACK_MAX = RAMSIZE (in bytes) / 16384 / (x / 32)，并满足nf_conntrack_max=4*nf_conntrack_buckets，默认262144</li><li>nf_conntrack_buckets：哈希表的大小，(nf_conntrack_max/nf_conntrack_buckets就是每条哈希记录链表的长度)，默认65536</li><li>nf_conntrack_tcp_timeout_established：tcp会话的超时时间，默认是432000 (5天)</li></ul><h4 id=tool>Tool</h4><p>文档：http://conntrack-tools.netfilter.org/manual.html</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-fallback data-lang=fallback><span style=display:flex><span>yum install conntrack-tools
+</span></span></code></pre></div><h4 id=reference>Reference</h4><ul><li><a href=https://www.frozentux.net/iptables-tutorial/iptables-tutorial.html#STATEMACHINE target=_blank rel=noopener>https://www.frozentux.net/iptables-tutorial/iptables-tutorial.html#STATEMACHINE</a></li><li><a href=https://wiki.khnet.info/index.php/Conntrack_tuning target=_blank rel=noopener>https://wiki.khnet.info/index.php/Conntrack_tuning</a></li><li><a href=https://wiki.aalto.fi/download/attachments/69901948/netfilter-paper.pdf target=_blank rel=noopener>https://wiki.aalto.fi/download/attachments/69901948/netfilter-paper.pdf</a></li></ul></div><footer class=post-footer></footer></article></section></div></div><div class=sidebar-toggle><div class=sidebar-toggle-line-wrap><span class="sidebar-toggle-line sidebar-toggle-line-first"></span>
+<span class="sidebar-toggle-line sidebar-toggle-line-middle"></span>
+<span class="sidebar-toggle-line sidebar-toggle-line-last"></span></div></div><aside id=sidebar class=sidebar><div class=sidebar-inner><ul class="sidebar-nav motion-element"><li class="sidebar-nav-toc sidebar-nav-active" data-target=post-toc-wrap>文章目录</li><li class=sidebar-nav-overview data-target=site-overview>站点概览</li></ul><section class="site-overview sidebar-panel"><div class="site-author motion-element" itemprop=author itemscope itemtype=http://schema.org/Person><img class=site-author-image itemprop=image src=/img/avatar.jpeg alt=Canon><p class=site-author-name itemprop=name>Canon</p><p class="site-description motion-element" itemprop=description>慢慢走, 慢慢来!</p></div><nav class="site-state motion-element"><div class="site-state-item site-state-posts"><a href=/post/><span class=site-state-item-count>48</span>
+<span class=site-state-item-name>日志</span></a></div><div class="site-state-item site-state-categories"><a href=/categories/><span class=site-state-item-count>14</span>
+<span class=site-state-item-name>分类</span></a></div><div class="site-state-item site-state-tags"><a href=/tags/><span class=site-state-item-count>12</span>
+<span class=site-state-item-name>标签</span></a></div></nav><div class="links-of-author motion-element"><span class=links-of-author-item><a href=https://github.com/MrVWY target=_blank title=GitHub><i class="fa fa-fw fa-github"></i>
+GitHub</a></span>
+<span class=links-of-author-item><a href=https://github.com/MrVWY/Learn-Note target=_blank title=笔记><i class="fa fa-fw fa-globe"></i>
+笔记</a></span></div><div class="tagcloud-of-blogroll motion-element tagcloud-of-blogroll-inline"><div class=tagcloud-of-blogroll-title><i class="fa fa-fw fa-tags"></i>
+标签云</div><ul class=tagcloud-of-blogroll-list><li class=tagcloud-of-blogroll-item><a href=/tags/go>Go
+<sup>20</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/%E8%B7%AF%E7%94%B1%E4%BA%A4%E6%8D%A2>路由交换
+<sup>6</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/leetcode>Leetcode
+<sup>4</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/linux>Linux
+<sup>4</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/tcp/ip>Tcp IP
+<sup>3</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/c>C
+<sup>1</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/js>Js
+<sup>1</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/network>Network
+<sup>1</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/nginx>Nginx
+<sup>1</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/tcp/iplinux>Tcp iplinux
+<sup>1</sup></a></li></ul></div></section><section class="post-toc-wrap motion-element sidebar-panel sidebar-panel-active"><div class=post-toc><div class=post-toc-content><nav id=TableOfContents><ul><li><ul><li></li></ul></li></ul></nav></div></div></section></div></aside></div></main><footer id=footer class=footer><div class=footer-inner><div class=copyright><span class=copyright-year>&copy; 2021 - 2023</span>
+<span class=with-love><i class="fa fa-heart"></i></span>
+<span class=copyright-author>Canon Blog</span></div><div class=vistor-info><script async src=//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js></script>
+<span class=site-uv><i class="fa fa-user"></i>
+<span class=busuanzi-value id=busuanzi_value_site_uv></span></span>
+<span class=separator-line>/</span>
+<span class=site-pv><i class="fa fa-eye"></i>
+<span class=busuanzi-value id=busuanzi_value_site_pv></span></span></div><div class=license-info><span class=storage-info>Storage by
+<a href style=font-weight:700 target=_blank></a></span>
+<span class=separator-line>/</span>
+<span class=license-num><a href target=_blank></a></span></div></div></footer><div class=back-to-top><i class="fa fa-arrow-up"></i>
+<span id=scrollpercent><span>0</span>%</span></div></div><script type=text/javascript src=//unpkg.com/jquery@2.1.4/dist/jquery.min.js></script>
+<script type=text/javascript src=/js/search.js></script>
+<script type=text/javascript src=/js/affix.js></script>
+<script type=text/javascript>function detectIE(){var e=window.navigator.userAgent,t=e.indexOf("MSIE "),n=e.indexOf("Trident/"),s=e.indexOf("Edge/");return t>0||n>0||s>0?-1:1}function getCntViewHeight(){var t=$("#content").height(),e=$(window).height(),n=t>e?t-e:$(document).height()-e;return n}function getScrollbarWidth(){var e=$("<div />").addClass("scrollbar-measure").prependTo("body"),t=e[0],n=t.offsetWidth-t.clientWidth;return e.remove(),n}function registerBackTop(){var t=50,e=$(".back-to-top");$(window).on("scroll",function(){e.toggleClass("back-to-top-on",window.pageYOffset>t);var s=$(window).scrollTop(),o=getCntViewHeight(),i=s/o,n=Math.round(i*100),a=n>100?100:n;$("#scrollpercent>span").html(a)}),e.on("click",function(){$("html,body").animate({scrollTop:0,screenLeft:0},800)})}function initScrollSpy(){var e=".post-toc",s=$(e),t=".active-current";s.on("activate.bs.scrollspy",function(){var t=$(e+" .active").last();n(),t.addClass("active-current")}).on("clear.bs.scrollspy",n),$("body").scrollspy({target:e});function n(){$(e+" "+t).removeClass(t.substring(1))}}function initAffix(){var e=$(".header-inner").height(),t=parseInt($(".footer").outerHeight(!0),10),n=e+10;$(".sidebar-inner").affix({offset:{top:n,bottom:t}})}function initTOCDimension(){$(window).on("resize",function(){e&&clearTimeout(e),e=setTimeout(function(){var e=document.body.clientHeight-100;updateTOCHeight(e)},0)}),updateTOCHeight(document.body.clientHeight-100);var e,t=getScrollbarWidth();$(".post-toc").css("width","calc(100% + "+t+"px)")}function updateTOCHeight(e){e=e||"auto",$(".post-toc").css("max-height",e)}$(function(){var e,t,n,s,o=$(".header-inner").height()+10;$("#sidebar").css({"margin-top":o}).show(),t=parseInt($("#sidebar").css("margin-top")),n=parseInt($(".sidebar-inner").css("height")),e=t+n,s=$(".content-wrap").height(),s<e&&$(".content-wrap").css("min-height",e),$(".site-nav-toggle").on("click",function(){var e=$(".site-nav"),o=$(".toggle"),t="site-nav-on",i="toggle-close",n=e.hasClass(t),a=n?"slideUp":"slideDown",s=n?"removeClass":"addClass";e.stop()[a]("normal",function(){e[s](t),o[s](i)})}),registerBackTop(),initAffix(),initTOCDimension(),$(".sidebar-nav-toc").click(function(){$(this).addClass("sidebar-nav-active"),$(this).next().removeClass("sidebar-nav-active"),$("."+$(this).next().attr("data-target")).toggle(500),$("."+$(this).attr("data-target")).toggle(500)}),$(".sidebar-nav-overview").click(function(){$(this).addClass("sidebar-nav-active"),$(this).prev().removeClass("sidebar-nav-active"),$("."+$(this).prev().attr("data-target")).toggle(500),$("."+$(this).attr("data-target")).toggle(500)})})</script><script src=//unpkg.com/imageviewer@1.1.0/dist/viewer.min.js></script>
+<script type=text/javascript>$(function(){$(".post-body").viewer()})</script><script src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_SVG"></script>
+<script type=text/javascript src="//s7.addthis.com/js/300/addthis_widget.js#pubid=Your%20AddthisId"></script>
+<script>(function(){var t,e=document.createElement("script"),n=window.location.protocol.split(":")[0];n==="https"?e.src="https://zz.bdstatic.com/linksubmit/push.js":e.src="http://push.zhanzhang.baidu.com/push.js",t=document.getElementsByTagName("script")[0],t.parentNode.insertBefore(e,t)})()</script></body></html>

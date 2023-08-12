@@ -1,0 +1,196 @@
+<!doctype html><html lang=zh-cn dir=zh><head><meta charset=utf-8><meta http-equiv=x-ua-compatible content="IE=edge,chrome=1"><meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1"><meta http-equiv=content-security-policy content="upgrade-insecure-requests"><title>C language - TCP/IP .h file and use Xdp - Canon Blog</title><meta name=keywords content="博客,程序员,读书,笔记,技术,分享"><meta name=author content="Canon"><meta property="og:title" content="C language - TCP/IP .h file and use Xdp"><meta property="og:site_name" content="Canon Blog"><meta property="og:image" content="/img/author.jpg"><meta name=title content="C language - TCP/IP .h file and use Xdp - Canon Blog"><meta name=description content="欢迎来到Canon的博客"><link rel="shortcut icon" href=/img/favicon.ico><link href=//unpkg.com/font-awesome@4.7.0/css/font-awesome.min.css rel=stylesheet type=text/css><link href=//unpkg.com/imageviewer@1.1.0/dist/viewer.min.css rel=stylesheet><link href=/css/main.css rel=stylesheet type=text/css><link href=/css/syntax.css rel=stylesheet type=text/css></head><body itemscope itemtype=http://schema.org/WebPage lang=zh-Hans><div class="container one-collumn sidebar-position-left page-home"><div class=headband></div><header id=header class=header itemscope itemtype=http://schema.org/WPHeader><div class=header-inner><div class=site-brand-container><div class=site-nav-toggle><div class=toggle role=button style=opacity:1;top:0><span class=toggle-line></span>
+<span class=toggle-line></span>
+<span class=toggle-line></span></div></div><div class=site-meta><div class=custom-logo-site-title><a href=/ class=brand rel=start><span class=logo-line-before><i></i></span>
+<span class=site-title>Canon Blog</span>
+<span class=logo-line-after><i></i></span></a></div><p class=site-subtitle>记录学习资料!</p></div><div class=site-nav-right><div class="toggle popup-trigger" style=opacity:1;top:0><i class="fa fa-search fa-fw fa-lg"></i></div></div></div><nav class=site-nav><ul id=menu class=menu><li class=menu-item><a href=/ rel=section><i class="menu-item-icon fa fa-fw fa-home"></i><br>首页</a></li><li class="menu-item menu-item-active"><a href=/post rel=section><i class="menu-item-icon fa fa-fw fa-archive"></i><br>归档</a></li><li class="menu-item menu-item-search"><a href=javascript:; class=popup-trigger><i class="menu-item-icon fa fa-search fa-fw"></i><br>搜索</a></li></ul><div class=site-search><div class="popup search-popup local-search-popup"><div class="local-search-header clearfix"><span class=search-icon><i class="fa fa-search"></i></span>
+<span class=popup-btn-close><i class="fa fa-times-circle"></i></span><div class=local-search-input-wrapper><input autocomplete=off placeholder=搜索关键字... spellcheck=false type=text id=local-search-input autocapitalize=none autocorrect=off></div></div><div id=local-search-result></div></div></div></nav></div></header><main id=main class=main><div class=main-inner><div class=content-wrap><div id=content class=content><section id=posts class=posts-expand><article class="post post-type-normal" itemscope itemtype=http://schema.org/Article><header class=post-header><h1 class=post-title itemprop="name headline" style=font-weight:700><a class=post-title-link href=/post/c-language-tcpip-.h-file-and-use-xdp/ itemprop=url>C language - TCP/IP .h file and use Xdp</a></h1></header><div class=post-body itemprop=articleBody><p>Commonly use .h network file</p><h3 id=ipv4-header>IPv4 header</h3><ul><li><p><code>netinet/ip.h</code>：<code>struct ip</code></p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-c data-lang=c><span style=display:flex><span><span style=color:#a2f;font-weight:700>struct</span> ip {
+</span></span><span style=display:flex><span><span style=color:#080>#if BYTE_ORDER == LITTLE_ENDIAN 
+</span></span></span><span style=display:flex><span><span style=color:#080></span>	u_char	<span style=color:#a0a000>ip_hl</span>:<span style=color:#666>4</span>,		<span style=color:#080;font-style:italic>/* header length */</span>
+</span></span><span style=display:flex><span>		<span style=color:#a0a000>ip_v</span>:<span style=color:#666>4</span>;			<span style=color:#080;font-style:italic>/* version */</span>
+</span></span><span style=display:flex><span><span style=color:#080>#endif
+</span></span></span><span style=display:flex><span><span style=color:#080>#if BYTE_ORDER == BIG_ENDIAN 
+</span></span></span><span style=display:flex><span><span style=color:#080></span>	u_char	<span style=color:#a0a000>ip_v</span>:<span style=color:#666>4</span>,			<span style=color:#080;font-style:italic>/* version */</span>
+</span></span><span style=display:flex><span>		<span style=color:#a0a000>ip_hl</span>:<span style=color:#666>4</span>;		<span style=color:#080;font-style:italic>/* header length */</span>
+</span></span><span style=display:flex><span><span style=color:#080>#endif
+</span></span></span><span style=display:flex><span><span style=color:#080></span>	u_char	ip_tos;			<span style=color:#080;font-style:italic>/* type of service */</span>
+</span></span><span style=display:flex><span>	<span style=color:#0b0;font-weight:700>short</span>	ip_len;			<span style=color:#080;font-style:italic>/* total length */</span>
+</span></span><span style=display:flex><span>	u_short	ip_id;			<span style=color:#080;font-style:italic>/* identification */</span>
+</span></span><span style=display:flex><span>	<span style=color:#0b0;font-weight:700>short</span>	ip_off;			<span style=color:#080;font-style:italic>/* fragment offset field */</span>
+</span></span><span style=display:flex><span><span style=color:#080>#define	IP_DF 0x4000			</span><span style=color:#080;font-style:italic>/* dont fragment flag */</span><span style=color:#080>
+</span></span></span><span style=display:flex><span><span style=color:#080>#define	IP_MF 0x2000			</span><span style=color:#080;font-style:italic>/* more fragments flag */</span><span style=color:#080>
+</span></span></span><span style=display:flex><span><span style=color:#080></span>	u_char	ip_ttl;			<span style=color:#080;font-style:italic>/* time to live */</span>
+</span></span><span style=display:flex><span>	u_char	ip_p;			<span style=color:#080;font-style:italic>/* protocol */</span>
+</span></span><span style=display:flex><span>	u_short	ip_sum;			<span style=color:#080;font-style:italic>/* checksum */</span>
+</span></span><span style=display:flex><span>	<span style=color:#a2f;font-weight:700>struct</span>	in_addr ip_src,ip_dst;	<span style=color:#080;font-style:italic>/* source and dest address */</span>
+</span></span><span style=display:flex><span>};
+</span></span></code></pre></div></li><li><p><code>linux/ip.h</code>：<code>struct iphdr</code></p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-c data-lang=c><span style=display:flex><span><span style=color:#a2f;font-weight:700>struct</span> iphdr {
+</span></span><span style=display:flex><span>    <span style=color:#080>#if defined(__LITTLE_ENDIAN_BITFIELD)
+</span></span></span><span style=display:flex><span><span style=color:#080></span>        __u8    <span style=color:#a0a000>ihl</span>:<span style=color:#666>4</span>,
+</span></span><span style=display:flex><span>                <span style=color:#a0a000>version</span>:<span style=color:#666>4</span>;
+</span></span><span style=display:flex><span>    <span style=color:#080>#elif defined (__BIG_ENDIAN_BITFIELD)
+</span></span></span><span style=display:flex><span><span style=color:#080></span>        __u8    <span style=color:#a0a000>version</span>:<span style=color:#666>4</span>,
+</span></span><span style=display:flex><span>                <span style=color:#a0a000>ihl</span>:<span style=color:#666>4</span>;
+</span></span><span style=display:flex><span>    <span style=color:#080>#else
+</span></span></span><span style=display:flex><span><span style=color:#080></span>        <span style=color:#080>#error  &#34;Please fix &lt;asm/byteorder.h&gt;&#34;
+</span></span></span><span style=display:flex><span><span style=color:#080></span>    <span style=color:#080>#endif
+</span></span></span><span style=display:flex><span><span style=color:#080></span>         __u8   tos;
+</span></span><span style=display:flex><span>         __u16  tot_len;
+</span></span><span style=display:flex><span>         __u16  id;
+</span></span><span style=display:flex><span>         __u16  frag_off;
+</span></span><span style=display:flex><span>         __u8   ttl;
+</span></span><span style=display:flex><span>         __u8   protocol;
+</span></span><span style=display:flex><span>         __u16  check;
+</span></span><span style=display:flex><span>         __u32  saddr;
+</span></span><span style=display:flex><span>         __u32  daddr;
+</span></span><span style=display:flex><span>         <span style=color:#080;font-style:italic>/*The options start here. */</span>
+</span></span><span style=display:flex><span>};
+</span></span></code></pre></div></li></ul><h3 id=tcp-header>Tcp header</h3><ul><li><p><code>netinet/tcp.h</code> ： <code>struct tcphdr</code></p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-c data-lang=c><span style=display:flex><span><span style=color:#a2f;font-weight:700>struct</span> tcphdr {
+</span></span><span style=display:flex><span>	u_short	th_sport;		<span style=color:#080;font-style:italic>/* source port */</span>
+</span></span><span style=display:flex><span>	u_short	th_dport;		<span style=color:#080;font-style:italic>/* destination port */</span>
+</span></span><span style=display:flex><span>	tcp_seq	th_seq;			<span style=color:#080;font-style:italic>/* sequence number */</span>
+</span></span><span style=display:flex><span>	tcp_seq	th_ack;			<span style=color:#080;font-style:italic>/* acknowledgement number */</span>
+</span></span><span style=display:flex><span><span style=color:#080>#if BYTE_ORDER == LITTLE_ENDIAN 
+</span></span></span><span style=display:flex><span><span style=color:#080></span>	u_char	<span style=color:#a0a000>th_x2</span>:<span style=color:#666>4</span>,		<span style=color:#080;font-style:italic>/* (unused) */</span>
+</span></span><span style=display:flex><span>		<span style=color:#a0a000>th_off</span>:<span style=color:#666>4</span>;		<span style=color:#080;font-style:italic>/* data offset */</span>
+</span></span><span style=display:flex><span><span style=color:#080>#endif
+</span></span></span><span style=display:flex><span><span style=color:#080>#if BYTE_ORDER == BIG_ENDIAN 
+</span></span></span><span style=display:flex><span><span style=color:#080></span>	u_char	<span style=color:#a0a000>th_off</span>:<span style=color:#666>4</span>,		<span style=color:#080;font-style:italic>/* data offset */</span>
+</span></span><span style=display:flex><span>		<span style=color:#a0a000>th_x2</span>:<span style=color:#666>4</span>;		<span style=color:#080;font-style:italic>/* (unused) */</span>
+</span></span><span style=display:flex><span><span style=color:#080>#endif
+</span></span></span><span style=display:flex><span><span style=color:#080></span>	u_char	th_flags;
+</span></span><span style=display:flex><span><span style=color:#080>#define	TH_FIN	0x01
+</span></span></span><span style=display:flex><span><span style=color:#080>#define	TH_SYN	0x02
+</span></span></span><span style=display:flex><span><span style=color:#080>#define	TH_RST	0x04
+</span></span></span><span style=display:flex><span><span style=color:#080>#define	TH_PUSH	0x08
+</span></span></span><span style=display:flex><span><span style=color:#080>#define	TH_ACK	0x10
+</span></span></span><span style=display:flex><span><span style=color:#080>#define	TH_URG	0x20
+</span></span></span><span style=display:flex><span><span style=color:#080></span>	u_short	th_win;			<span style=color:#080;font-style:italic>/* window */</span>
+</span></span><span style=display:flex><span>	u_short	th_sum;			<span style=color:#080;font-style:italic>/* checksum */</span>
+</span></span><span style=display:flex><span>	u_short	th_urp;			<span style=color:#080;font-style:italic>/* urgent pointer */</span>
+</span></span><span style=display:flex><span>};
+</span></span></code></pre></div></li><li><p><code>linux/tcp.h</code> ： <code>struct tcphdr</code></p></li></ul><h3 id=udp-header>Udp header</h3><ul><li><p><code>netinet/udp.h</code>： <code>struct udphdr</code></p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-c data-lang=c><span style=display:flex><span><span style=color:#a2f;font-weight:700>struct</span> udphdr
+</span></span><span style=display:flex><span>{
+</span></span><span style=display:flex><span>  <span style=color:#0b0;font-weight:700>u_int16_t</span> uh_sport;                <span style=color:#080;font-style:italic>/* source port */</span>
+</span></span><span style=display:flex><span>  <span style=color:#0b0;font-weight:700>u_int16_t</span> uh_dport;                <span style=color:#080;font-style:italic>/* destination port */</span>
+</span></span><span style=display:flex><span>  <span style=color:#0b0;font-weight:700>u_int16_t</span> uh_ulen;                <span style=color:#080;font-style:italic>/* udp length */</span>
+</span></span><span style=display:flex><span>  <span style=color:#0b0;font-weight:700>u_int16_t</span> uh_sum;                <span style=color:#080;font-style:italic>/* udp checksum */</span>
+</span></span><span style=display:flex><span>};
+</span></span></code></pre></div></li><li><p><code>linux/udp.h</code>： <code>struct udphdr</code></p></li></ul><h3 id=sk_buff>sk_buff</h3><ul><li><p><code>linux/skbuff.h</code>：<code>struck sk_buff</code></p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-c data-lang=c><span style=display:flex><span><span style=color:#a2f;font-weight:700>struct</span> sk_buff {
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>/* These two members must be first. */</span>
+</span></span><span style=display:flex><span>	<span style=color:#a2f;font-weight:700>struct</span> sk_buff		<span style=color:#666>*</span>next;
+</span></span><span style=display:flex><span>	<span style=color:#a2f;font-weight:700>struct</span> sk_buff		<span style=color:#666>*</span>prev;
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	<span style=color:#a2f;font-weight:700>struct</span> sock		<span style=color:#666>*</span>sk;
+</span></span><span style=display:flex><span>	<span style=color:#a2f;font-weight:700>struct</span> skb_timeval	tstamp;
+</span></span><span style=display:flex><span>	<span style=color:#a2f;font-weight:700>struct</span> net_device	<span style=color:#666>*</span>dev;
+</span></span><span style=display:flex><span>	<span style=color:#a2f;font-weight:700>struct</span> net_device	<span style=color:#666>*</span>input_dev;
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>//transport 
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#a2f;font-weight:700>union</span> {
+</span></span><span style=display:flex><span>		<span style=color:#a2f;font-weight:700>struct</span> tcphdr	<span style=color:#666>*</span>th;
+</span></span><span style=display:flex><span>		<span style=color:#a2f;font-weight:700>struct</span> udphdr	<span style=color:#666>*</span>uh;
+</span></span><span style=display:flex><span>		<span style=color:#a2f;font-weight:700>struct</span> icmphdr	<span style=color:#666>*</span>icmph;
+</span></span><span style=display:flex><span>		<span style=color:#a2f;font-weight:700>struct</span> igmphdr	<span style=color:#666>*</span>igmph;
+</span></span><span style=display:flex><span>		<span style=color:#a2f;font-weight:700>struct</span> iphdr	<span style=color:#666>*</span>ipiph;
+</span></span><span style=display:flex><span>		<span style=color:#a2f;font-weight:700>struct</span> ipv6hdr	<span style=color:#666>*</span>ipv6h;
+</span></span><span style=display:flex><span>		<span style=color:#0b0;font-weight:700>unsigned</span> <span style=color:#0b0;font-weight:700>char</span>	<span style=color:#666>*</span>raw;
+</span></span><span style=display:flex><span>	} h;
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>//network
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#a2f;font-weight:700>union</span> {
+</span></span><span style=display:flex><span>		<span style=color:#a2f;font-weight:700>struct</span> iphdr	<span style=color:#666>*</span>iph;
+</span></span><span style=display:flex><span>		<span style=color:#a2f;font-weight:700>struct</span> ipv6hdr	<span style=color:#666>*</span>ipv6h;
+</span></span><span style=display:flex><span>		<span style=color:#a2f;font-weight:700>struct</span> arphdr	<span style=color:#666>*</span>arph;
+</span></span><span style=display:flex><span>		<span style=color:#0b0;font-weight:700>unsigned</span> <span style=color:#0b0;font-weight:700>char</span>	<span style=color:#666>*</span>raw;
+</span></span><span style=display:flex><span>	} nh;
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>//mac
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#a2f;font-weight:700>union</span> {
+</span></span><span style=display:flex><span>	  	<span style=color:#0b0;font-weight:700>unsigned</span> <span style=color:#0b0;font-weight:700>char</span> 	<span style=color:#666>*</span>raw;
+</span></span><span style=display:flex><span>	} mac;
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>//route
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>	<span style=color:#a2f;font-weight:700>struct</span>  dst_entry	<span style=color:#666>*</span>dst;
+</span></span><span style=display:flex><span>	<span style=color:#a2f;font-weight:700>struct</span>	sec_path	<span style=color:#666>*</span>sp;
+</span></span><span style=display:flex><span>  .........
+</span></span><span style=display:flex><span>};
+</span></span></code></pre></div></li></ul><h3 id=icmp-header>Icmp header</h3><ul><li><p><code>netinet/ip_icmp.h</code>： <code>struct icmphdr</code></p></li><li><p><code>linux/icmp.h</code>： <code>struct icmphdr</code></p></li><li><p>type and code</p><p>reference：https://en.wikipedia.org/wiki/Internet_Control_Message_Protocol</p></li></ul><h3 id=arp-header>Arp header</h3><ul><li><code>net/if_arp.h</code>： <code>struct arphdr</code></li><li><code>linux/if_arp.h</code> ：<code>struct arphdr</code></li></ul><h3 id=ethernet-header>Ethernet header</h3><ul><li><code>netinet/if_ether.h</code>：</li><li><code>linux/if_ether.h</code> ： <code>struct ethhdr</code></li></ul><h3 id=use--iovisorbcc>Use iovisor/Bcc</h3><ul><li><p><code>linux/bpf.h</code>：</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-c data-lang=c><span style=display:flex><span><span style=color:#a2f;font-weight:700>enum</span> xdp_action {
+</span></span><span style=display:flex><span>	XDP_ABORTED <span style=color:#666>=</span> <span style=color:#666>0</span>,
+</span></span><span style=display:flex><span>	XDP_DROP,
+</span></span><span style=display:flex><span>	XDP_PASS,
+</span></span><span style=display:flex><span>	XDP_TX,
+</span></span><span style=display:flex><span>	XDP_REDIRECT,
+</span></span><span style=display:flex><span>};
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>struct</span> xdp_md {
+</span></span><span style=display:flex><span>	__u32 data;
+</span></span><span style=display:flex><span>	__u32 data_end;
+</span></span><span style=display:flex><span>	__u32 data_meta;
+</span></span><span style=display:flex><span>	<span style=color:#080;font-style:italic>/* Below access go through struct xdp_rxq_info */</span>
+</span></span><span style=display:flex><span>	__u32 ingress_ifindex; <span style=color:#080;font-style:italic>/* rxq-&gt;dev-&gt;ifindex */</span>
+</span></span><span style=display:flex><span>	__u32 rx_queue_index;  <span style=color:#080;font-style:italic>/* rxq-&gt;queue_index  */</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>	__u32 egress_ifindex;  <span style=color:#080;font-style:italic>/* txq-&gt;dev-&gt;ifindex */</span>
+</span></span><span style=display:flex><span>};
+</span></span></code></pre></div></li><li><p>example</p><ul><li>filter.c</li></ul><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-c data-lang=c><span style=display:flex><span><span style=color:#080>#include</span> <span style=color:#080>&lt;linux/bpf.h&gt;</span><span style=color:#080>
+</span></span></span><span style=display:flex><span><span style=color:#080>#include</span> <span style=color:#080>&lt;linux/if_ether.h&gt;</span><span style=color:#080>
+</span></span></span><span style=display:flex><span><span style=color:#080>#include</span> <span style=color:#080>&lt;linux/ip.h&gt;</span><span style=color:#080>
+</span></span></span><span style=display:flex><span><span style=color:#080>#include</span> <span style=color:#080>&lt;linux/in.h&gt;</span><span style=color:#080>
+</span></span></span><span style=display:flex><span><span style=color:#080>#include</span> <span style=color:#080>&lt;linux/udp.h&gt;</span><span style=color:#080>
+</span></span></span><span style=display:flex><span><span style=color:#080></span>
+</span></span><span style=display:flex><span><span style=color:#0b0;font-weight:700>int</span> <span style=color:#00a000>filter</span>(<span style=color:#a2f;font-weight:700>struct</span> xdp_md <span style=color:#666>*</span>ctx) {
+</span></span><span style=display:flex><span>    <span style=color:#0b0;font-weight:700>void</span> <span style=color:#666>*</span>data <span style=color:#666>=</span> (<span style=color:#0b0;font-weight:700>void</span> <span style=color:#666>*</span>)(<span style=color:#0b0;font-weight:700>long</span>)ctx<span style=color:#666>-&gt;</span>data;
+</span></span><span style=display:flex><span>    <span style=color:#0b0;font-weight:700>void</span> <span style=color:#666>*</span>data_end <span style=color:#666>=</span> (<span style=color:#0b0;font-weight:700>void</span> <span style=color:#666>*</span>)(<span style=color:#0b0;font-weight:700>long</span>)ctx<span style=color:#666>-&gt;</span>data_end;
+</span></span><span style=display:flex><span>    <span style=color:#a2f;font-weight:700>struct</span> ethhdr <span style=color:#666>*</span>eth <span style=color:#666>=</span> data; <span style=color:#080;font-style:italic>//指向数据包开头
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>    <span style=color:#a2f;font-weight:700>if</span> ((<span style=color:#0b0;font-weight:700>void</span><span style=color:#666>*</span>)eth <span style=color:#666>+</span> <span style=color:#a2f;font-weight:700>sizeof</span>(<span style=color:#666>*</span>eth) <span style=color:#666>&lt;=</span> data_end) {
+</span></span><span style=display:flex><span>    	<span style=color:#a2f;font-weight:700>struct</span> iphhdr <span style=color:#666>*</span>ip <span style=color:#666>=</span> data <span style=color:#666>+</span> <span style=color:#a2f;font-weight:700>sizeof</span>(<span style=color:#666>*</span>eth); <span style=color:#080;font-style:italic>//指向IP
+</span></span></span><span style=display:flex><span><span style=color:#080;font-style:italic></span>        <span style=color:#a2f;font-weight:700>if</span> ((<span style=color:#0b0;font-weight:700>void</span><span style=color:#666>*</span>)ip <span style=color:#666>+</span> <span style=color:#a2f;font-weight:700>sizeof</span>(<span style=color:#666>*</span>ip) <span style=color:#666>&lt;=</span> data_end) {
+</span></span><span style=display:flex><span>            ......
+</span></span><span style=display:flex><span>        }
+</span></span><span style=display:flex><span>    }
+</span></span><span style=display:flex><span>    <span style=color:#a2f;font-weight:700>return</span> XDP_PASS;
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><p>run.py</p><div class=highlight><pre tabindex=0 style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-python data-lang=python><span style=display:flex><span><span style=color:#a2f;font-weight:700>from</span> <span style=color:#00f;font-weight:700>bcc</span> <span style=color:#a2f;font-weight:700>import</span> BPF
+</span></span><span style=display:flex><span>device <span style=color:#666>=</span> <span style=color:#b44>&#34;lo&#34;</span>
+</span></span><span style=display:flex><span>b <span style=color:#666>=</span> BPF(src_file<span style=color:#666>=</span><span style=color:#b44>&#34;filter.c&#34;</span>)
+</span></span><span style=display:flex><span>f <span style=color:#666>=</span> b<span style=color:#666>.</span>load_func(<span style=color:#b44>&#34;filter&#34;</span>, BPF<span style=color:#666>.</span>XDP)
+</span></span><span style=display:flex><span>b<span style=color:#666>.</span>attach_xdp(device, f, <span style=color:#666>0</span>)
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>try</span>:
+</span></span><span style=display:flex><span>    b<span style=color:#666>.</span>trace_print()
+</span></span><span style=display:flex><span><span style=color:#a2f;font-weight:700>except</span> <span style=color:#666>...</span> :
+</span></span><span style=display:flex><span>    <span style=color:#666>....</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>b<span style=color:#666>.</span>remove_xdp(device, <span style=color:#666>0</span>)
+</span></span></code></pre></div></li><li><p>Bcc Related Reference</p><p><a href=https://stackoverflow.com/questions/60249948/what-exactly-is-usage-of-cursor-advance-in-bpf target=_blank rel=noopener>What exactly is usage of cursor_advance in BPF?</a></p></li></ul><h3 id=reference-guide>Reference Guide</h3><p><a href=https://github.com/iovisor/bcc/tree/7e3f0c08c7c28757711c0a173b5bd7d9a31cf7ee/examples target=_blank rel=noopener>https://github.com/iovisor/bcc/tree/7e3f0c08c7c28757711c0a173b5bd7d9a31cf7ee/examples</a></p><h3 id=function--guide>Function Guide</h3><p><a href=https://github.com/iovisor/bcc/blob/master/docs/reference_guide.md target=_blank rel=noopener>https://github.com/iovisor/bcc/blob/master/docs/reference_guide.md</a></p></div><footer class=post-footer></footer></article></section></div></div><div class=sidebar-toggle><div class=sidebar-toggle-line-wrap><span class="sidebar-toggle-line sidebar-toggle-line-first"></span>
+<span class="sidebar-toggle-line sidebar-toggle-line-middle"></span>
+<span class="sidebar-toggle-line sidebar-toggle-line-last"></span></div></div><aside id=sidebar class=sidebar><div class=sidebar-inner><ul class="sidebar-nav motion-element"><li class="sidebar-nav-toc sidebar-nav-active" data-target=post-toc-wrap>文章目录</li><li class=sidebar-nav-overview data-target=site-overview>站点概览</li></ul><section class="site-overview sidebar-panel"><div class="site-author motion-element" itemprop=author itemscope itemtype=http://schema.org/Person><img class=site-author-image itemprop=image src=/img/avatar.jpeg alt=Canon><p class=site-author-name itemprop=name>Canon</p><p class="site-description motion-element" itemprop=description>慢慢走, 慢慢来!</p></div><nav class="site-state motion-element"><div class="site-state-item site-state-posts"><a href=/post/><span class=site-state-item-count>48</span>
+<span class=site-state-item-name>日志</span></a></div><div class="site-state-item site-state-categories"><a href=/categories/><span class=site-state-item-count>14</span>
+<span class=site-state-item-name>分类</span></a></div><div class="site-state-item site-state-tags"><a href=/tags/><span class=site-state-item-count>12</span>
+<span class=site-state-item-name>标签</span></a></div></nav><div class="links-of-author motion-element"><span class=links-of-author-item><a href=https://github.com/MrVWY target=_blank title=GitHub><i class="fa fa-fw fa-github"></i>
+GitHub</a></span>
+<span class=links-of-author-item><a href=https://github.com/MrVWY/Learn-Note target=_blank title=笔记><i class="fa fa-fw fa-globe"></i>
+笔记</a></span></div><div class="tagcloud-of-blogroll motion-element tagcloud-of-blogroll-inline"><div class=tagcloud-of-blogroll-title><i class="fa fa-fw fa-tags"></i>
+标签云</div><ul class=tagcloud-of-blogroll-list><li class=tagcloud-of-blogroll-item><a href=/tags/go>Go
+<sup>20</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/%E8%B7%AF%E7%94%B1%E4%BA%A4%E6%8D%A2>路由交换
+<sup>6</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/leetcode>Leetcode
+<sup>4</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/linux>Linux
+<sup>4</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/tcp/ip>Tcp IP
+<sup>3</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/c>C
+<sup>1</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/js>Js
+<sup>1</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/network>Network
+<sup>1</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/nginx>Nginx
+<sup>1</sup></a></li><li class=tagcloud-of-blogroll-item><a href=/tags/tcp/iplinux>Tcp iplinux
+<sup>1</sup></a></li></ul></div></section><section class="post-toc-wrap motion-element sidebar-panel sidebar-panel-active"><div class=post-toc><div class=post-toc-content><nav id=TableOfContents><ul><li><ul><li><a href=#ipv4-header>IPv4 header</a></li><li><a href=#tcp-header>Tcp header</a></li><li><a href=#udp-header>Udp header</a></li><li><a href=#sk_buff>sk_buff</a></li><li><a href=#icmp-header>Icmp header</a></li><li><a href=#arp-header>Arp header</a></li><li><a href=#ethernet-header>Ethernet header</a></li><li><a href=#use--iovisorbcc>Use iovisor/Bcc</a></li><li><a href=#reference-guide>Reference Guide</a></li><li><a href=#function--guide>Function Guide</a></li></ul></li></ul></nav></div></div></section></div></aside></div></main><footer id=footer class=footer><div class=footer-inner><div class=copyright><span class=copyright-year>&copy; 2021 - 2023</span>
+<span class=with-love><i class="fa fa-heart"></i></span>
+<span class=copyright-author>Canon Blog</span></div><div class=vistor-info><script async src=//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js></script>
+<span class=site-uv><i class="fa fa-user"></i>
+<span class=busuanzi-value id=busuanzi_value_site_uv></span></span>
+<span class=separator-line>/</span>
+<span class=site-pv><i class="fa fa-eye"></i>
+<span class=busuanzi-value id=busuanzi_value_site_pv></span></span></div><div class=license-info><span class=storage-info>Storage by
+<a href style=font-weight:700 target=_blank></a></span>
+<span class=separator-line>/</span>
+<span class=license-num><a href target=_blank></a></span></div></div></footer><div class=back-to-top><i class="fa fa-arrow-up"></i>
+<span id=scrollpercent><span>0</span>%</span></div></div><script type=text/javascript src=//unpkg.com/jquery@2.1.4/dist/jquery.min.js></script>
+<script type=text/javascript src=/js/search.js></script>
+<script type=text/javascript src=/js/affix.js></script>
+<script type=text/javascript>function detectIE(){var e=window.navigator.userAgent,t=e.indexOf("MSIE "),n=e.indexOf("Trident/"),s=e.indexOf("Edge/");return t>0||n>0||s>0?-1:1}function getCntViewHeight(){var t=$("#content").height(),e=$(window).height(),n=t>e?t-e:$(document).height()-e;return n}function getScrollbarWidth(){var e=$("<div />").addClass("scrollbar-measure").prependTo("body"),t=e[0],n=t.offsetWidth-t.clientWidth;return e.remove(),n}function registerBackTop(){var t=50,e=$(".back-to-top");$(window).on("scroll",function(){e.toggleClass("back-to-top-on",window.pageYOffset>t);var s=$(window).scrollTop(),o=getCntViewHeight(),i=s/o,n=Math.round(i*100),a=n>100?100:n;$("#scrollpercent>span").html(a)}),e.on("click",function(){$("html,body").animate({scrollTop:0,screenLeft:0},800)})}function initScrollSpy(){var e=".post-toc",s=$(e),t=".active-current";s.on("activate.bs.scrollspy",function(){var t=$(e+" .active").last();n(),t.addClass("active-current")}).on("clear.bs.scrollspy",n),$("body").scrollspy({target:e});function n(){$(e+" "+t).removeClass(t.substring(1))}}function initAffix(){var e=$(".header-inner").height(),t=parseInt($(".footer").outerHeight(!0),10),n=e+10;$(".sidebar-inner").affix({offset:{top:n,bottom:t}})}function initTOCDimension(){$(window).on("resize",function(){e&&clearTimeout(e),e=setTimeout(function(){var e=document.body.clientHeight-100;updateTOCHeight(e)},0)}),updateTOCHeight(document.body.clientHeight-100);var e,t=getScrollbarWidth();$(".post-toc").css("width","calc(100% + "+t+"px)")}function updateTOCHeight(e){e=e||"auto",$(".post-toc").css("max-height",e)}$(function(){var e,t,n,s,o=$(".header-inner").height()+10;$("#sidebar").css({"margin-top":o}).show(),t=parseInt($("#sidebar").css("margin-top")),n=parseInt($(".sidebar-inner").css("height")),e=t+n,s=$(".content-wrap").height(),s<e&&$(".content-wrap").css("min-height",e),$(".site-nav-toggle").on("click",function(){var e=$(".site-nav"),o=$(".toggle"),t="site-nav-on",i="toggle-close",n=e.hasClass(t),a=n?"slideUp":"slideDown",s=n?"removeClass":"addClass";e.stop()[a]("normal",function(){e[s](t),o[s](i)})}),registerBackTop(),initAffix(),initTOCDimension(),$(".sidebar-nav-toc").click(function(){$(this).addClass("sidebar-nav-active"),$(this).next().removeClass("sidebar-nav-active"),$("."+$(this).next().attr("data-target")).toggle(500),$("."+$(this).attr("data-target")).toggle(500)}),$(".sidebar-nav-overview").click(function(){$(this).addClass("sidebar-nav-active"),$(this).prev().removeClass("sidebar-nav-active"),$("."+$(this).prev().attr("data-target")).toggle(500),$("."+$(this).attr("data-target")).toggle(500)})})</script><script src=//unpkg.com/imageviewer@1.1.0/dist/viewer.min.js></script>
+<script type=text/javascript>$(function(){$(".post-body").viewer()})</script><script src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_SVG"></script>
+<script type=text/javascript src="//s7.addthis.com/js/300/addthis_widget.js#pubid=Your%20AddthisId"></script>
+<script>(function(){var t,e=document.createElement("script"),n=window.location.protocol.split(":")[0];n==="https"?e.src="https://zz.bdstatic.com/linksubmit/push.js":e.src="http://push.zhanzhang.baidu.com/push.js",t=document.getElementsByTagName("script")[0],t.parentNode.insertBefore(e,t)})()</script></body></html>

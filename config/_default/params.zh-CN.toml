@@ -1,0 +1,43 @@
+Description = "欢迎来到Canon的博客"
+Keywords =  "博客, 程序员, 读书, 笔记, 技术, 分享"
+Subtitle = "记录学习资料!"
+AuthorImg = "/img/avatar.jpeg"
+AuthorName = "Canon"
+Introduce = "慢慢走, 慢慢来!"
+DateFormat = "2006-01-02"
+YearFormat = "2006年"
+MonthFormat = "01-02"
+
+ArticleDeclContent = "本博客文章除特别声明外，均采用 <a href='https://creativecommons.org/licenses/by-nc-sa/3.0/' target='_blank' style='text-decoration: underline;'>CC BY-NC-SA 3.0</a>许可协议，转载请注明出处！"
+
+[Footer]
+#  StorageLink = "https://gitee.com/"
+#  StorageName = "Gitee 仓库"
+#  ICPLink = "http://beian.miit.gov.cn"
+  ICPNo = ""
+
+[[Socials]]
+  Name = "GitHub"
+  Icon = "github"
+  URL = "https://github.com/MrVWY"
+
+[[Socials]]
+  Name = "笔记"
+  Icon = "globe"
+  URL = "https://github.com/MrVWY/Learn-Note"
+
+#[[Links]]
+#  Name = "Nutz"
+#  Permalink = "https://nutzam.com/"
+
+#[[Links]]
+#  Name = "JFinal"
+#  Permalink = "https://jfinal.com/"
+
+#[[Links]]
+#  Name = "Wendal"
+#  Permalink = "http://wendal.net/"
+
+#[[Links]]
+#  Name = "廖雪峰"
+#  Permalink = "https://www.liaoxuefeng.com/"
