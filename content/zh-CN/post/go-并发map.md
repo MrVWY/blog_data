@@ -67,21 +67,20 @@ func (m *RWMap) Each(f func(k, v int) bool) { // 遍历map
 
 ​	功能上满足，但是在高并发的场景下，性能跟不上，一旦加上锁，就必须等到锁释放其他协程才能使用
 
-### 分片加锁
+### concurrent-map
 
-​	文档里说`concurrent-map`提供了一种高性能的解决方案:通过对内部`map`进行分片，降低锁粒度，从而达到最少的锁等待时间(锁冲突)。意思就是将 map 分成 n 块，每个块之间的读写操作都互不干扰，从而降低冲突的可能性。
+​	文档里说`concurrent-map`提供了一种高性能的解决方案:通过对内部`map`进行分片，降低锁粒度，从而达到最少的锁等待时间(锁冲突)。意思就是将 map 分成 n 块，每个块之间的读写操作都互不干扰，从而降低冲突的可能性。即使用分片锁，将哈希表分成多个小的哈希表片段，并为每个片段分配一个独立的锁。当多个goroutine尝试同时读写同一个片段时，只有该片段上的锁会被锁住，而其他片段的锁则不受影响，从而避免了整个哈希表被锁住的情况。
 
 ​	直接看源码：https://github.com/orcaman/concurrent-map/blob/master/concurrent_map.go
 
 ​	Github：https://github.com/orcaman/concurrent-map
 
-<img src="go-并发map/1.jpg"  />
+![](/images/go-并发map/1.jpg)
 
 ​	其实就是定义`ConcurrentMapShared`结构体（这便是map里面的某个块），里面含有一个读写锁。
 
-<img src="go-并发map/2.jpg" style="zoom:150%;" />
 
-![](go-并发map/3.jpg)
+![](/images/go-并发map/2.jpg)
 
 ​	当对map进行相关操作时，就去计算hash值，算出落在哪一个块中，再去进行相关操作。
 
@@ -91,11 +90,11 @@ func (m *RWMap) Each(f func(k, v int) bool) { // 遍历map
 
 第一张是sync.map的结构图
 
-![](go-并发map/5.png)
+![](/images/go-并发map/5.png)
 
 第二张是关于sync.map里面的dirty和read的转换图
 
-![](go-并发map/4.jpg)
+![](/images/go-并发map/4.jpg)
 
 关于从dirty迁移到read，当misses达到dirty长度时，才触发迁移，迁移完成之后misses置为0，dirty置为nil，read就拥有了dirty原来的数据。
 

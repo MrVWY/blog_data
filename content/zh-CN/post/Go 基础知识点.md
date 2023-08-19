@@ -14,6 +14,11 @@ type: about
 
 ### GC
 
+#### STW(stop the world)
+  为了避免在 GC 的过程中，对象之间的引用关系发生新的变更，使得GC的结果发生错误（如GC过程中新增了一个引用，但是由于未扫描到该引用导致将被引用的对象清除了），停止所有正在运行的协程。  
+
+  STW对性能有一些影响，Golang目前已经可以做到1ms以下的STW
+
 #### 标记清除
 
 ​	标记清除（Mark-Sweep）算法是最常见的垃圾收集算法，标记清除收集器是跟踪式垃圾收集器，其执行过程可以分成标记（Mark）和清除（Sweep）两个阶段：
@@ -43,9 +48,11 @@ type: about
 
 ​	三色标记垃圾收集器的工作原理很简单，我们可以将其归纳成以下几个步骤：
 
-1. 从灰色对象的集合中选择一个灰色对象并将其标记成黑色；
-2. 将黑色对象指向的所有对象都标记成灰色，保证该对象和被该对象引用的对象都不会被回收；
-3. 重复上述两个步骤直到对象图中不存在灰色对象；
+1. 从灰色对象的集合中选择一个灰色对象并将其标记成黑色
+2. 将黑色对象指向的所有对象都标记成灰色，保证该对象和被该对象引用的对象都不会被回收
+3. 重复上述两个步骤直到对象图中不存在灰色对象
+4. 通过写屏障(write-barrier)检测对象有变化，重复以上操作
+5. 收集所有白色对象（垃圾）
 
 ​	当三色的标记清除的标记阶段结束之后，应用程序的堆中就不存在任何的灰色对象，只能有黑色的存活对象以及白色的垃圾对象，垃圾收集器可以回收这些白色的垃圾。
 
@@ -194,7 +201,7 @@ M 必须拥有 P 才可以执行 G 中的代码，P 含有一个包含多个 G �
 ![](/images/Go基础知识点/GMP-2.png)
 
 
-### Channel 
+### Chan
 
 ![](/images/Go基础知识点/chan-1.png)
 
@@ -205,18 +212,17 @@ M 必须拥有 P 才可以执行 G 中的代码，P 含有一个包含多个 G �
 
 ```go
 type hchan struct {
-	qcount   uint
-	dataqsiz uint
-	buf      unsafe.Pointer
-	elemsize uint16
-	closed   uint32
-	elemtype *_type
-	sendx    uint
-	recvx    uint
-	recvq    waitq
-	sendq    waitq
-
-	lock mutex
+	qcount   uint  // 队列中的总元素个数
+   dataqsiz uint  // 环形队列大小，即可存放元素的个数
+   buf      unsafe.Pointer // 环形队列指针
+   elemsize uint16  //每个元素的大小
+   closed   uint32  //标识关闭状态
+   elemtype *_type // 元素类型
+   sendx    uint   // 发送索引，元素写入时存放到队列中的位置
+   recvx    uint   // 接收索引，元素从队列的该位置读出
+   recvq    waitq  // 等待读消息的goroutine队列
+   sendq    waitq  // 等待写消息的goroutine队列
+   lock mutex  //互斥锁，chan不允许并发读写
 }
 ```
 
@@ -239,355 +245,41 @@ type waitq struct {
 
 [`runtime.sudog`](https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/runtime2.go#L345) 表示一个在等待列表中的 Goroutine，该结构中存储了两个分别指向前后 [`runtime.sudog`](https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/runtime2.go#L345) 的指针以构成链表。
 
-#### 发送数据
+#### 读写流程
 
-在发送数据的逻辑（ [`runtime.chansend`](https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/chan.go#L158) 函数实现）执行之前会先为当前 Channel 加锁，防止多个线程并发修改数据。
+##### 向 channel 写数据:
 
-##### 过程
+1. 若等待接收队列 recvq 不为空，则缓冲区中无数据或无缓冲区，将直接从 recvq 取出 G ，并把数据写入，最后把该 G 唤醒，结束发送过程。
+2. 若缓冲区中有空余位置，则将数据写入缓冲区，结束发送过程。
+3. 若缓冲区中没有空余位置，则将发送数据写入 G，将当前 G 加入 sendq ，进入睡眠，等待被读 goroutine 唤醒。
 
-1. 当存在等待的接收者时，通过 [`runtime.send`](https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/chan.go#L292) 直接将数据发送给阻塞的接收者；
-2. 当缓冲区存在空余空间时，将发送的数据写入 Channel 的缓冲区；
-3. 当不存在缓冲区或者缓冲区已满时，等待其他 Goroutine 从 Channel 接收数据；
+##### 从 channel 读数据
 
-##### 直接发送
+1. 若等待发送队列 sendq 不为空，且没有缓冲区，直接从 sendq 中取出 G ，把 G 中数据读出，最后把 G 唤醒，结束读取过程。
+2. 如果等待发送队列 sendq 不为空，说明缓冲区已满，从缓冲区中首部读出数据，把 G 中数据写入缓冲区尾部，把 G 唤醒，结束读取过程。
+3. 如果缓冲区中有数据，则从缓冲区取出数据，结束读取过程。
+4. 将当前 goroutine 加入 recvq ，进入睡眠，等待被写 goroutine 唤醒。
 
-如果目标 Channel 没有被关闭并且已经有处于读等待的 Goroutine，那么 [`runtime.chansend`](https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/chan.go#L158) 会从接收队列 `recvq` 中取出最先陷入等待的 Goroutine 并直接向它发送数据：
+##### 关闭 channel
 
-```go
-	if sg := c.recvq.dequeue(); sg != nil {
-        // Found a waiting receiver. We pass the value we want to send
-		// directly to the receiver, bypassing the channel buffer (if any).
-		send(c, sg, ep, func() { unlock(&c.lock) }, 3)
-		return true
-	}
-```
+关闭 channel 时会将 recvq 中的 G 全部唤醒，本该写入 G 的数据位置为 nil。将 sendq 中的 G 全部唤醒，但是这些 G 会 panic。
 
-发送数据时会调用 [`runtime.send`](https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/chan.go#L292) ，该函数的执行可以分成两个部分：
+panic 出现的场景还有：
 
-1. 调用 [`runtime.sendDirect`](https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/chan.go#L333) 将发送的数据直接拷贝到 `x = <-c` 表达式中变量 `x` 所在的内存地址上；
-2. 调用 [`runtime.goready`](https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/proc.go#L345) 将等待接收数据的 Goroutine 标记成可运行状态 `Grunnable` 并把该 Goroutine 放到发送方所在的处理器的 `runnext` 上等待执行，该处理器在下一次调度时会立刻唤醒数据的接收方；
+1. 关闭值为 nil 的 channel
+2. 关闭已经关闭的 channel
+3. 向已经关闭的 channel 中写数据
 
-##### 缓冲区buf
 
-```go
-func chansend(c *hchan, ep unsafe.Pointer, block bool, callerpc uintptr) bool {
-	...
-	if c.qcount < c.dataqsiz {
-		// Space is available in the channel buffer. Enqueue the element to send.
-		qp := chanbuf(c, c.sendx)
-		if raceenabled {
-			racenotify(c, c.sendx, nil)
-		}
-		typedmemmove(c.elemtype, qp, ep)
-		c.sendx++
-		if c.sendx == c.dataqsiz {
-			c.sendx = 0
-		}
-		c.qcount++
-		unlock(&c.lock)
-		return true
-	}
-	...
-}
-```
-
-​	如果当前 Channel 的缓冲区未满，向 Channel 发送的数据会存储在 Channel 的 `sendx` 索引所在的位置并将 `sendx` 索引加一。因为这里的 `buf` 是一个循环数组，所以当 `sendx` 等于 `dataqsiz` 时会重新回到数组开始的位置。
-
-##### 阻塞发送
-
-当 Channel 没有接收者能够处理数据时，向 Channel 发送数据会被下游阻塞，当然使用 `select` 关键字可以向 Channel 非阻塞地发送消息。向 Channel 阻塞地发送数据会执行下面的代码，我们可以简单梳理一下这段代码的逻辑：
-
-```go
-func chansend(c *hchan, ep unsafe.Pointer, block bool, callerpc uintptr) bool {
-	...
-	if !block {
-		unlock(&c.lock)
-		return false
-	}
-
-	// Block on the channel. Some receiver will complete our operation for us.
-	gp := getg()
-	mysg := acquireSudog()
-	mysg.releasetime = 0
-	if t0 != 0 {
-		mysg.releasetime = -1
-	}
-	// No stack splits between assigning elem and enqueuing mysg
-	// on gp.waiting where copystack can find it.
-	mysg.elem = ep
-	mysg.waitlink = nil
-	mysg.g = gp
-	mysg.isSelect = false
-	mysg.c = c
-	gp.waiting = mysg
-	gp.param = nil
-	c.sendq.enqueue(mysg)
-	// Signal to anyone trying to shrink our stack that we're about
-	// to park on a channel. The window between when this G's status
-	// changes and when we set gp.activeStackChans is not safe for
-	// stack shrinking.
-	atomic.Store8(&gp.parkingOnChan, 1)
-	
-    gopark(chanparkcommit, unsafe.Pointer(&c.lock), waitReasonChanSend, traceEvGoBlockSend, 2)
-    //goparkunlock(&c.lock, waitReasonChanSend, traceEvGoBlockSend, 3)
-	
-    // Ensure the value being sent is kept alive until the
-	// receiver copies it out. The sudog has a pointer to the
-	// stack object, but sudogs aren't considered as roots of the
-	// stack tracer.
-	KeepAlive(ep)
-
-	// someone woke us up.
-	if mysg != gp.waiting {
-		throw("G waiting list is corrupted")
-	}
-	gp.waiting = nil
-	gp.activeStackChans = false
-	closed := !mysg.success
-	gp.param = nil
-	if mysg.releasetime > 0 {
-		blockevent(mysg.releasetime-t0, 2)
-	}
-	mysg.c = nil
-	releaseSudog(mysg)
-	if closed {
-		if c.closed == 0 {
-			throw("chansend: spurious wakeup")
-		}
-		panic(plainError("send on closed channel"))
-	}
-	return true
-}
-```
-
-1. 调用 [`runtime.getg`](https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/stubs.go#L18) 获取发送数据使用的 Goroutine；
-2. 执行 [`runtime.acquireSudog`](https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/proc.go#L352) 获取 [`runtime.sudog`](https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/runtime2.go#L345) 结构并设置这一次阻塞发送的相关信息，例如发送的 Channel、是否在 select 中和待发送数据的内存地址等；
-3. 将刚刚创建并初始化的 [`runtime.sudog`](https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/runtime2.go#L345) 加入发送等待队列，并设置到当前 Goroutine 的 `waiting` 上，表示 Goroutine 正在等待该 `sudog` 准备就绪；
-4. 调用 `runtime.gopark`将当前的 Goroutine 陷入沉睡等待唤醒；
-5. 被调度器唤醒后会执行一些收尾工作，将一些属性置零并且释放 [`runtime.sudog`](https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/runtime2.go#L345) 结构体；
-
-#### 接受数据
-
-Go 语言中可以使用两种不同的方式去接收 Channel 中的数据：
-
-```go
-i <- ch
-i, ok <- ch
-```
-
-这两种不同的方法经过编译器的处理会被转换成 [`runtime.chanrecv1`](https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/chan.go#L438) 和 [`runtime.chanrecv2`](https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/chan.go#L443) 两种不同函数的调用，但是这两个函数最终还是会调用 [`runtime.chanrecv`](https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/chan.go#L454)。
-
-```
-// entry points for <- c from compiled code
-//go:nosplit
-func chanrecv1(c *hchan, elem unsafe.Pointer) {
-   chanrecv(c, elem, true)
-}
-
-//go:nosplit
-func chanrecv2(c *hchan, elem unsafe.Pointer) (received bool) {
-   _, received = chanrecv(c, elem, true)
-   return
-}
-```
-
-当我们从一个空 Channel 接收数据时会直接调用 [`runtime.gopark`](https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/proc.go#L319) 让出处理器的使用权。
-
-```go
-func chanrecv(c *hchan, ep unsafe.Pointer, block bool) (selected, received bool) {
-	if c == nil {
-		if !block {
-			return
-		}
-		gopark(nil, nil, waitReasonChanReceiveNilChan, traceEvGoStop, 2)
-		throw("unreachable")
-	}
-
-	lock(&c.lock)
-
-	if c.closed != 0 && c.qcount == 0 {
-		unlock(&c.lock)
-		if ep != nil {
-			typedmemclr(c.elemtype, ep)
-		}
-		return true, false
-	}
-}
-```
-
-如果当前 Channel 已经被关闭并且缓冲区中不存在任何数据，那么会清除 `ep` 指针中的数据并立刻返回。
-
-除了上述两种特殊情况，使用 [`runtime.chanrecv`](https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/chan.go#L454)从 Channel 接收数据时还包含以下三种不同情况：
-
-- 当存在等待的发送者时，通过 [`runtime.recv`](https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/chan.go#L607) 从阻塞的发送者或者缓冲区中获取数据；
-- 当缓冲区存在数据时，从 Channel 的缓冲区中接收数据；
-- 当缓冲区中不存在数据时，等待其他 Goroutine 向 Channel 发送数据；
-
-##### 直接接收
-
-​	当 Channel 的 `sendq` 队列中包含处于等待状态的 Goroutine 时，该函数会取出队列头等待的 Goroutine，处理的逻辑和发送时相差无几，只是发送数据时调用的是 [`runtime.send`](https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/chan.go#L292) 函数，而接收数据时使用 [`runtime.recv`](https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/chan.go#L607) ：
-
-```go
-if sg := c.sendq.dequeue(); sg != nil {
-   // Found a waiting sender. If buffer is size 0, receive value
-   // directly from sender. Otherwise, receive from head of queue
-   // and add sender's value to the tail of the queue (both map to
-   // the same buffer slot because the queue is full).
-   recv(c, sg, ep, func() { unlock(&c.lock) }, 3)
-   return true, true
-}
-```
-
-runtime.recv：
-
-```go
-// recv processes a receive operation on a full channel c.
-// There are 2 parts:
-// 1) The value sent by the sender sg is put into the channel
-//    and the sender is woken up to go on its merry way.
-// 2) The value received by the receiver (the current G) is
-//    written to ep.
-// For synchronous channels, both values are the same.
-// For asynchronous channels, the receiver gets its data from
-// the channel buffer and the sender's data is put in the
-// channel buffer.
-// Channel c must be full and locked. recv unlocks c with unlockf.
-// sg must already be dequeued from c.
-// A non-nil ep must point to the heap or the caller's stack.
-func recv(c *hchan, sg *sudog, ep unsafe.Pointer, unlockf func(), skip int) {
-   if c.dataqsiz == 0 {
-      if raceenabled {
-         racesync(c, sg)
-      }
-      if ep != nil {
-         // copy data from sender
-         recvDirect(c.elemtype, sg, ep)
-      }
-   } else {
-      // Queue is full. Take the item at the
-      // head of the queue. Make the sender enqueue
-      // its item at the tail of the queue. Since the
-      // queue is full, those are both the same slot.
-      qp := chanbuf(c, c.recvx)
-      if raceenabled {
-         racenotify(c, c.recvx, nil)
-         racenotify(c, c.recvx, sg)
-      }
-      // copy data from queue to receiver
-      if ep != nil {
-         typedmemmove(c.elemtype, ep, qp)
-      }
-      // copy data from sender to queue
-      typedmemmove(c.elemtype, qp, sg.elem)
-      c.recvx++
-      if c.recvx == c.dataqsiz {
-         c.recvx = 0
-      }
-      c.sendx = c.recvx // c.sendx = (c.sendx+1) % c.dataqsiz
-   }
-   sg.elem = nil
-   gp := sg.g
-   unlockf()
-   gp.param = unsafe.Pointer(sg)
-   sg.success = true
-   if sg.releasetime != 0 {
-      sg.releasetime = cputicks()
-   }
-   goready(gp, skip+1)
-}
-```
-
-recv函数会根据缓冲区的大小分别处理不同的情况：
-
-- 如果 Channel 不存在缓冲区（dataqsiz = 0）；
-  1. 调用 [`runtime.recvDirect`](https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/chan.go#L346) 将 Channel 发送队列中 Goroutine 存储的 `elem` 数据拷贝到目标内存地址中；
-- 如果 Channel 存在缓冲区（dataqsiz != 0）；
-  1. 将队列中的数据拷贝到接收方的内存地址；
-  2. 将发送队列头的数据拷贝到缓冲区中，释放一个阻塞的发送方；
-
-无论发生哪种情况，运行时都会调用 [`runtime.goready`](https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/runtime/proc.go#L345) 将当前处理器的 `runnext` 设置成发送数据的 Goroutine，在调度器下一次调度时将阻塞的发送方唤醒。
-
-##### 缓冲区 
-
-​	当 Channel 的缓冲区中已经包含数据时，从 Channel 中接收数据会直接从缓冲区中 `recvx` 的索引位置中取出数据进行处理：
-
-```go
-if c.qcount > 0 {
-   // Receive directly from queue
-   qp := chanbuf(c, c.recvx)
-   if raceenabled {
-      racenotify(c, c.recvx, nil)
-   }
-   if ep != nil {
-      typedmemmove(c.elemtype, ep, qp)
-   }
-   typedmemclr(c.elemtype, qp)
-   c.recvx++
-   if c.recvx == c.dataqsiz {
-      c.recvx = 0
-   }
-   c.qcount--
-   unlock(&c.lock)
-   return true, true
-}
-```
-
-##### 阻塞接收
-
-​	当 Channel 的发送队列中不存在等待的 Goroutine 并且缓冲区中也不存在任何数据时，从管道中接收数据的操作会变成阻塞的，然而不是所有的接收操作都是阻塞的，与 `select` 语句结合使用时就可能会使用到非阻塞的接收操作：
-
-```go
-func chanrecv(c *hchan, ep unsafe.Pointer, block bool) (selected, received bool) {
-	...
-if !block {
-		unlock(&c.lock)
-		return false, false
-	}
-
-	// no sender available: block on this channel.
-	gp := getg()
-	mysg := acquireSudog()
-	mysg.releasetime = 0
-	if t0 != 0 {
-		mysg.releasetime = -1
-	}
-	// No stack splits between assigning elem and enqueuing mysg
-	// on gp.waiting where copystack can find it.
-	mysg.elem = ep
-	mysg.waitlink = nil
-	gp.waiting = mysg
-	mysg.g = gp
-	mysg.isSelect = false
-	mysg.c = c
-	gp.param = nil
-	c.recvq.enqueue(mysg)
-	// Signal to anyone trying to shrink our stack that we're about
-	// to park on a channel. The window between when this G's status
-	// changes and when we set gp.activeStackChans is not safe for
-	// stack shrinking.
-	atomic.Store8(&gp.parkingOnChan, 1)
-	gopark(chanparkcommit, unsafe.Pointer(&c.lock), waitReasonChanReceive, traceEvGoBlockRecv, 2)
-
-	// someone woke us up
-	if mysg != gp.waiting {
-		throw("G waiting list is corrupted")
-	}
-	gp.waiting = nil
-	gp.activeStackChans = false
-	if mysg.releasetime > 0 {
-		blockevent(mysg.releasetime-t0, 2)
-	}
-	success := mysg.success
-	gp.param = nil
-	mysg.c = nil
-	releaseSudog(mysg)
-	return true, success
-}
-```
+#### 无缓冲 Chan 的发送和接收是否同步
+需要同步 
+channel 无缓冲时，发送阻塞直到数据被接收，接收阻塞直到读到数据；channel有缓冲时，当缓冲满时发送阻塞，当缓冲空时接收阻塞。
 
 ### Context
 
-​	上下文 [`context.Context`](https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/context/context.go#L62) Go 语言中用来设置截止日期、同步信号，传递请求相关值的结构体。Context 只定义了接口，凡是实现该接口的类都可称为是一种 context
+​	上下文 [`context.Context`](https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/context/context.go#L62) Go 语言中用来设置截止日期、同步信号，传递请求相关值的结构体。Context 只定义了接口，凡是实现该接口的类都可称为是一种 cont。xt
+
+  用途：常用的并发控制技术 ，它可以控制一组呈树状结构的goroutine，每个goroutine拥有相同的上下文。Context 是并发安全的，主要是用于控制多个协程之间的协作、取消操作。
 
 ​	 [`context.Context`](https://github.com/golang/go/blob/41d8e61a6b9d8f9db912626eb2bbc535e929fefc/src/context/context.go#L62) 接口定义了四个需要实现的方法，其中包括：
 
@@ -1406,7 +1098,7 @@ value, ok := x.(T)
 
 ​	基本模型的相关概念和理解可以参考我另一篇文章（重点看图理解）：https://mrvwy.github.io/2020/08/02/%E8%81%8A%E8%81%8Athread-caching-malloc/
 
-![](八股文-go\20200722022116565.png)
+![](/images/Go基础知识点/20200722022116565.png)
 
 ​	 [TCMalloc](https://github.com/google/tcmalloc)是用来替代传统的malloc内存分配函数。它有减少内存碎片，适用于多核，更好的并行性支持等特性。
 
@@ -1433,6 +1125,8 @@ value, ok := x.(T)
    PageHeap保存的也是若干链表，不过链表保存的是Span（多个相同的page组成一个Span）。CentralCache内存不足时，可以从PageHeap获取Span，然后把Span切割成object。
 
 ### map
+
+map底层是基于哈希表+链地址法存储的
 
 #### 为啥是无序的
 
@@ -1568,12 +1262,42 @@ Go语言中所有的传参都是值传递（传值），都是一个副本，一
 
 变量 a、b 各占据 3 字节的空间，内存对齐后，a、b 占据 4 字节空间，CPU 读取 b 变量的值只需要进行一次内存访问。如果不进行内存对齐，CPU 读取 b 变量的值需要进行 2 次内存访问。第一次访问得到 b 变量的第 1 个字节，第二次访问得到 b 变量的后两个字节。
 
-###  rune 类型
+### 竞态、内存逃逸
+#### 竟态
+资源竞争，就是在程序中，同一块内存同时被多个 goroutine 访问。我们使用 go build、go run、go test 命令时，添加 -race 标识可以检查代码中是否存在资源竞争。
+
+解决这个问题，我们可以给资源进行加锁，让其在同一时刻只能被一个协程来操作。例如：sync.Mutex，sync.RWMutex
+
+
+#### 逃逸
+逃逸分析就是程序运行时内存的分配位置(栈或堆)，是由编译器来确定的。堆适合不可预知大小的内存分配。但是为此付出的代价是分配速度较慢，而且会形成内存碎片。
+
+逃逸场景：
+1. 指针逃逸
+2. 栈空间不足逃逸
+3. 动态类型逃逸
+4. 闭包引用对象逃逸
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### 问题
+####  rune 类型
 
 - uint8 类型，或者叫 byte 型，代表了 ASCII 码的一个字符。
 - rune 类型，代表一个 UTF-8 字符，当需要处理中文、日文或者其他复合字符时，则需要用到 rune 类型。rune 类型等价于 int32 类型。
 
-### defer和return执行先后顺序
+#### defer和return执行先后顺序
 
 1. 多个defer的执行顺序为“后进先出”；
 2. defer、return、返回值三者的执行逻辑应该是：return最先执行，return负责将结果写入返回值中；接着defer开始执行一些收尾工作；最后函数携带当前返回值退出。
@@ -1683,7 +1407,7 @@ func main() {
 //分析： 不管代码顺序如何，defer-calc-func中参数b必须先计算，故会在运行到第一个defer时，执行calc("10",a,b)输出：10 1 2 3得到值3，将cal("1",1,3)存放到延后执执行函数队列中。同理运行到第二个defer也是一样。
 ```
 
-### 多重赋值
+#### 多重赋值
 
 ```go
 func main() {
@@ -1700,9 +1424,67 @@ func main() {
 - 计算等号左边的索引表达式和取址表达式，接着计算等号右边的表达式
 - 赋值
 
-### nil 可以用作 interface、function、pointer、map、slice 和 channel 的“空值”
+#### nil 可以用作 interface、function、pointer、map、slice 和 channel 的“空值”
 
 ​	nil 可以用作 interface、function、pointer、map、slice 和 channel 的“空值”
+
+
+#### 协程 线程 进程
+进程: 进程是具有一定独立功能的程序，进程是系统资源分配和调度的最小单位。 每个进程都有自己的独立内存空间，不同进程通过进程间通信来通信。由于进程比较重量，占据独立的内存，所以上下文进程间的切换开销（栈、寄存器、虚拟内存、文件句柄等）比较大，但相对比较稳定安全。  
+
+线程: 线程是进程的一个实体,线程是内核态,而且是CPU调度和分派的基本单位,它是比进程更小的能独立运行的基本单位。线程间通信主要通过共享内存，上下文切换很快，资源开销较少，但相比进程不够稳定容易丢失数据。  
+  
+协程: 协程是一种用户态的轻量级线程，协程的调度完全是由用户来控制的。协程拥有自己的寄存器上下文和栈。 协程调度切换时，将寄存器上下文和栈保存到其他地方，在切回来的时候，恢复先前保存的寄存器上下文和栈，直接操作栈则基本没有内核切换的开销，可以不加锁的访问全局变量，所以上下文的切换非常快。  
+
+
+#### 除了加 Mutex 锁以外还有哪些方式安全读写共享变量？
+Goroutine 可以通过 Channel 进行安全读写共享变量。Channel是异步进行的
+
+#### channel 为什么它可以做到线程安全？
+Channel 可以理解是一个先进先出的队列，通过管道进行通信,发送一个数据到Channel和从Channel接收一个数据都是原子性的。不要通过共享内存来通信，而是通过通信来共享内存，前者就是传统的加锁，后者就是Channel。设计Channel的主要目的就是在多任务间传递数据的，本身就是安全的。
+
+#### Goroutine和线程的区别？
+
+一个线程可以有多个协程
+
+线程、进程都是同步机制，而协程是异步
+
+协程可以保留上一次调用时的状态，当过程重入时，相当于进入了上一次的调用状态
+
+协程是需要线程来承载运行的，所以协程并不能取代线程，「线程是被分割的CPU资源，协程是组织好的代码流程」
+
+#### Struct能不能比较？
+
+相同struct类型的可以比较
+
+不同struct类型的不可以比较,编译都不过，类型不匹配
+
+#### Slice如何扩容？
+
+在使用 append 向 slice 追加元素时，若 slice 空间不足则会发生扩容，扩容会重新分配一块更大的内存，将原 slice 拷贝到新 slice ，然后返回新 slice。扩容后再将数据追加进去。
+
+扩容操作只对容量，扩容后的 slice 长度不变，容量变化规则如下：
+
+1. 若 slice 容量小于1024个元素，那么扩容的时候slice的cap就翻番，乘以2；一旦元素个数超过1024个元素，增长因子就变成1.25，即每次增加原来容量的四分之一。
+2. 若 slice 容量够用，则将新元素追加进去，slice.len++，返回原 slice
+3. 若 slice 容量不够用，将 slice 先扩容，扩容得到新 slice，将新元素追加进新 slice，slice.len++，返回新 slice。
+
+#### Go中的map如何实现顺序读取？
+
+Go中map如果要实现顺序读取的话，可以先把map中的key，通过sort包排序。
+
+#### Goroutine发生了泄漏如何检测？
+
+可以通过Go自带的工具pprof或者使用`Gops`去检测诊断当前在系统上运行的Go进程的占用的资源。
+
+#### 函数传参是值类型还是引用类型？
+
+在Go语言中只存在值传递，要么是值的副本，要么是指针的副本。无论是值类型的变量还是引用类型的变量亦或是指针类型的变量作为参数传递都会发生值拷贝，开辟新的内存空间。
+
+另外值传递、引用传递和值类型、引用类型是两个不同的概念，不要混淆了。引用类型作为变量传递可以影响到函数外部是因为发生值拷贝后新旧变量指向了相同的内存地址
+
+
+
 
 ### Reference
 
